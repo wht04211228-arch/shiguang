@@ -1,6 +1,6 @@
 {
   "name": "shiguang-digital-memory-gift",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -28,11 +28,8 @@
     "@types/react-dom": "^19.1.0",
     "typescript": "^5.9.0"
   },
-  "description": "拾光多人秘密共创纪念空间：自助制作、分层邀请、长期保存、收件人共同管理与全新引导式视觉工作台",
+  "description": "拾光多人秘密共创纪念空间：发布后交付引导、专属礼物链接、朋友共创话术与清晰下一步提醒",
   "overrides": {
     "postcss": "$postcss"
-  },
-  "allowScripts": {
-    "sharp@0.34.5": true
   }
 }
