@@ -17,6 +17,17 @@ export default async function StudioPage({
   const supabase = await createClient();
   const { data, error } = await supabase.auth.getClaims();
   if (error || !data?.claims?.sub) redirect("/login?next=/studio");
+  if (order) {
+    const { data: orderRow } = await supabase
+      .from("orders")
+      .select("id,status")
+      .eq("id", order)
+      .maybeSingle();
+    if (!orderRow) redirect("/orders");
+    if (!["paid", "in_progress", "fulfilled"].includes(orderRow.status)) {
+      redirect(`/order/${order}`);
+    }
+  }
   const email =
     typeof data.claims.email === "string" ? data.claims.email : "已登录制作人";
   return <GiftStudio cloudMode userEmail={email} orderId={order} />;

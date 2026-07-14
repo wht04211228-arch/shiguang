@@ -19,13 +19,14 @@ export default async function AdminPage() {
   if (!claims) return <main className="card-state-page"><section className="card-state-card"><span>×</span><h1>没有运营后台权限</h1><p>当前登录账号不在 ADMIN_EMAILS 白名单中。</p><Link className="button-primary" href="/">返回首页</Link></section></main>;
   const admin = createAdminClient();
   const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
-  const [{ data: orders }, { data: refunds }, { data: events }, { data: tasks }, { data: reviews }, { data: referrals }] = await Promise.all([
+  const [{ data: orders }, { data: refunds }, { data: events }, { data: tasks }, { data: reviews }, { data: referrals }, { data: manualProofs }] = await Promise.all([
     admin.from("orders").select("id,plan_id,status,amount,customer_email,customer_name,service_stage,priority,due_at,assignee,created_at,order_briefs(status,recipient_name)").order("created_at", { ascending: false }).limit(100),
     admin.from("refund_requests").select("id,status,order_id,reason,requested_at").eq("status", "pending").order("requested_at", { ascending: false }).limit(20),
     admin.from("conversion_events").select("event_name,session_id,created_at").gte("created_at", since).limit(10000),
     admin.from("production_tasks").select("id,status,due_at,order_id").neq("status", "done").limit(500),
     admin.from("order_reviews").select("id,status,order_id,created_at").eq("status", "pending").limit(500),
     admin.from("referral_codes").select("click_count,paid_order_count,status").eq("status", "active").limit(500),
+    admin.from("manual_payment_proofs").select("id,review_status,order_id,created_at").in("review_status", ["submitted", "reviewing"]).order("created_at", { ascending: false }).limit(200),
   ]);
   const orderRows = orders ?? [];
   const eventRows = events ?? [];
@@ -41,10 +42,11 @@ export default async function AdminPage() {
 
   return (
     <main className="commerce-page admin-page">
-      <header className="landing-nav commerce-nav"><Link className="landing-brand" href="/"><span>拾</span><div><strong>拾光</strong><small>OPERATIONS</small></div></Link><nav><Link href="/orders">用户订单页</Link><Link href="/cases">案例页</Link></nav></header>
+      <header className="landing-nav commerce-nav"><Link className="landing-brand" href="/"><span>拾</span><div><strong>拾光</strong><small>OPERATIONS</small></div></Link><nav><Link href="/admin/payments">付款审核</Link><Link href="/orders">用户订单页</Link><Link href="/cases">案例页</Link></nav></header>
       <section className="commerce-hero compact admin-hero"><p className="landing-kicker">OPERATIONS DASHBOARD</p><h1>从成交到交付，一眼看清哪里需要处理。</h1><p>当前管理员：{String(claims.email)}</p></section>
       <section className="admin-metric-grid">
         <article><span>订单收入</span><strong>{formatCny(paidRevenue)}</strong><small>最近 100 笔订单</small></article>
+        <article><span>待核对付款</span><strong>{manualProofs?.length ?? 0}</strong><small><Link href="/admin/payments">进入审核队列</Link></small></article>
         <article><span>等待问卷</span><strong>{orderRows.filter((order) => order.service_stage === "waiting_brief").length}</strong><small>应主动提醒</small></article>
         <article><span>制作中</span><strong>{orderRows.filter((order) => ["planning", "producing", "reviewing"].includes(order.service_stage)).length}</strong><small>关注交付日期</small></article>
         <article><span>待确认初稿</span><strong>{reviews?.length ?? 0}</strong><small>客户尚未反馈</small></article>

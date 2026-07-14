@@ -1,148 +1,46 @@
-# 拾光 Growth & Delivery MVP v0.6
+# 拾光 v0.7｜人工付款审核版
 
-“拾光”是一套面向私人定制互动式数字纪念礼物的全栈项目。v0.6 在 v0.5 正式售卖版之上，补齐了成交后的关键交付闭环：初稿确认、套餐修改次数、制作任务、自动提醒、客户评价、案例授权与推荐码追踪。
+这是面向没有微信支付／支付宝商户号的早期售卖版本。项目不再创建 Stripe 收银台，而是使用“创建订单 → 人工付款 → 上传凭证 → 管理员核对真实到账 → 开通制作权限”的流程。
 
-## 本版本完成的核心闭环
-
-```text
-支付并提交问卷
-→ 自动生成基础制作任务
-→ 运营分配负责人和截止时间
-→ 制作台生成可审阅版本
-→ 运营发起第 N 轮初稿确认
-→ 客户批准或提出修改
-→ 系统扣减套餐修改次数
-→ 客户批准后正式交付
-→ 提交评价与案例授权
-→ 生成推荐码并追踪打开和付费转化
-```
-
-## 1. 初稿确认与修改次数
-
-订单详情页会在运营发起初稿确认后显示确认面板。客户可以：
-
-- 打开当前初稿预览；
-- 确认并正式交付；
-- 提交具体修改意见；
-- 查看已使用和剩余的修改次数。
-
-套餐修改额度直接读取 `giftPlans`：
-
-- 轻定制：1 次；
-- 深度定制：3 次；
-- 私人策划：5 次。
-
-制作台发布不再直接把订单标记为已交付。只有客户批准初稿后，订单才会进入 `fulfilled / delivered`。
-
-## 2. 制作任务与分配
-
-问卷正式提交时，如果订单尚无任务，系统会自动创建：
-
-1. 核对问卷与素材完整性；
-2. 整理故事结构与章节顺序；
-3. 完成页面制作并内部校对。
-
-运营后台可以继续新增任务、分配负责人、设置截止时间，并在以下状态间切换：
+## 核心流程
 
 ```text
-todo → doing → blocked → done
+选择套餐
+→ 登录并创建待付款订单
+→ 查看微信／支付宝人工付款说明
+→ 上传付款截图和完整交易单号
+→ 管理员在真实收款记录中核对
+→ 通过后订单变为已支付
+→ 开放需求问卷、素材上传、DeepSeek 文案和制作台
+→ 初稿确认、交付、评价与推荐
 ```
 
-## 3. 自动提醒
+付款截图不会自动判定订单已支付。管理员必须核对真实到账金额、时间和交易单号。
 
-新增：
+## v0.7 新增
 
-```text
-GET /api/cron/reminders
-```
+- `/pay/manual/[id]` 人工付款说明与凭证提交页
+- `/order/[id]/payment-proof` 兼容跳转地址
+- `/admin/payments` 付款凭证审核队列
+- 私有 `payment-proofs` Storage Bucket
+- 完整交易单号重复校验
+- 管理员通过／驳回与邮件通知
+- 付款审核原子数据库函数，避免订单与凭证状态不一致
+- 未确认到账时禁止问卷、素材上传、AI额度、发布和制作台订单入口
+- 管理员不能绕过付款审核直接把人工付款订单改为已支付
+- 删除 Stripe 运行依赖和 Webhook 路由
 
-`vercel.json` 默认每天触发一次，以兼容 Vercel Hobby 计划；付费计划可按需要调整为每 6 小时。提醒场景：
+## 运行环境
 
-- 已付款超过 24 小时仍未提交问卷；
-- 初稿发出超过 24 小时仍未确认；
-- 订单将在 24 小时内到期但尚未交付。
+- Next.js 16
+- React 19
+- TypeScript
+- Supabase Auth / PostgreSQL / Storage
+- DeepSeek 文案辅助
+- Resend 通知
+- Vercel 部署
 
-用户提醒发送到订单邮箱；交付预警发送到 `OPERATIONS_NOTIFICATION_EMAIL`。`reminder_logs.dedupe_key` 会在发送前抢占唯一记录，即使平台重复触发同一批任务，也不会重复发送当日同类提醒。
-
-## 4. 客户评价与案例授权
-
-正式交付后，客户可以提交：
-
-- 1–5 星评价；
-- 真实文字评价；
-- 公开展示名；
-- 是否允许匿名整理案例；
-- 是否允许引用文字；
-- 是否允许使用媒体素材。
-
-媒体授权文案明确说明：即使勾选允许，具体图片或录屏仍应再次确认后才可使用。
-
-运营后台可以审核评价。只有同时满足以下条件的文字才会进入 `/cases`：
-
-- 客户允许公开评价；
-- 客户允许引用文字；
-- 运营审核状态为 `approved`；
-- 授权没有被撤回。
-
-## 5. 推荐码与转化追踪
-
-新增：
-
-```text
-/referrals
-/api/referrals
-/api/referrals/track
-```
-
-客户可以生成推荐码和推荐链接：
-
-```text
-https://你的域名/pricing?ref=SGXXXXXXXX
-```
-
-系统追踪：
-
-- 不重复的推荐会话打开次数；
-- 推荐订单归因；
-- 成功支付订单数。
-
-同一登录账号不能通过自己的推荐码给自己归因。当前版本只做数据追踪，不自动承诺现金返佣。
-
-## 6. 运营后台增强
-
-`/admin` 新增指标：
-
-- 待确认初稿；
-- 逾期制作任务；
-- 推荐打开与付费转化；
-- 待处理退款。
-
-`/admin/order/[id]` 新增：
-
-- 发起新一轮初稿确认；
-- 查看客户修改意见；
-- 创建、分配与更新制作任务；
-- 查看客户评价与案例授权；
-- 审核评价是否可以公开展示。
-
-## 主要路由
-
-```text
-/                         品牌首页
-/cases                    演示案例与已授权评价
-/pricing                  套餐、优惠码与推荐归因
-/orders                   用户订单中心
-/order/[id]               问卷、初稿确认、评价与售后
-/brief?order=[id]         制作需求问卷
-/studio?order=[id]        礼物制作台
-/card/[slug]              收件人专属礼物
-/referrals                推荐码与转化数据
-/admin                    运营仪表盘
-/admin/order/[id]         订单制作工作台
-/api/cron/reminders       自动提醒任务
-```
-
-## 无配置直接体验
+## 本地启动
 
 ```bash
 npm install
@@ -153,90 +51,98 @@ npm run dev
 
 ```text
 http://localhost:3000
-http://localhost:3000/pricing?ref=SGDEMO88
+http://localhost:3000/pricing
 http://localhost:3000/order/demo?plan=deep
-http://localhost:3000/referrals
-http://localhost:3000/admin
-http://localhost:3000/card/sample
 ```
 
-演示模式不会真实扣款，也不会写入真实数据库。
+未配置 Supabase 时使用本地演示模式，不会真实创建订单或上传付款凭证。
 
-## Supabase 配置
+## 从 v0.6.2 升级
 
-新项目执行：
+在 Supabase SQL Editor 执行：
+
+```text
+supabase/migrations/007_manual_payment_review.sql
+```
+
+然后将 v0.7 代码推送到 GitHub，并在 Vercel 重新部署。
+
+新建 Supabase 项目时可以直接执行：
 
 ```text
 supabase/schema.sql
 ```
 
-从 v0.5 升级只执行：
-
-```text
-supabase/migrations/006_growth_delivery.sql
-```
-
-新增或变更：
-
-- `orders.review_status`
-- `orders.revision_count`
-- `orders.review_requested_at`
-- `orders.approved_at`
-- `orders.referred_by_code`
-- `order_reviews`
-- `production_tasks`
-- `customer_reviews`
-- `case_permissions`
-- `referral_codes`
-- `referral_attributions`
-- `reminder_logs`
-
-## 新增环境变量
+## 必需环境变量
 
 ```env
-OPERATIONS_NOTIFICATION_EMAIL=owner@example.com
-CRON_SECRET=replace-with-a-long-random-cron-secret
+NEXT_PUBLIC_SUPABASE_URL=https://YOUR_PROJECT.supabase.co
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_xxx
+SUPABASE_SECRET_KEY=sb_secret_xxx
+CARD_ACCESS_SECRET=长随机字符串
+NEXT_PUBLIC_SITE_URL=https://你的正式域名
+ADMIN_EMAILS=你的管理员登录邮箱
+OPERATIONS_NOTIFICATION_EMAIL=接收付款审核提醒的邮箱
+CRON_SECRET=长随机字符串
 ```
 
-已有变量仍按 `.env.example` 配置，包括 Supabase、Stripe、Resend、OpenAI、管理员邮箱和站点域名。
+### 人工付款配置
 
-## Vercel Cron
-
-项目内已包含：
+推荐在 Supabase Storage 的私有 `merchant-assets` Bucket 中上传：
 
 ```text
-vercel.json
+wechat.png
+alipay.png
 ```
 
-默认计划：
+然后在 Vercel 添加：
 
-```text
-0 1 * * *
+```env
+MANUAL_WECHAT_QR_PATH=wechat.png
+MANUAL_ALIPAY_QR_PATH=alipay.png
+CUSTOMER_SERVICE_CONTACT=微信：你的客服号
+MANUAL_PAYMENT_INSTRUCTIONS=付款时请备注订单号后8位\n付款后上传清晰截图并填写完整交易单号\n管理员核对真实到账后开通制作权限
 ```
 
-正式部署时必须配置 `CRON_SECRET`，提醒接口只接受：
+服务器会为订单所有者生成 15 分钟短时二维码地址。也支持 `MANUAL_WECHAT_QR_URL` 和 `MANUAL_ALIPAY_QR_URL` 作为公开 HTTPS 图片后备方案。
 
-```text
-Authorization: Bearer <CRON_SECRET>
+### 可选服务
+
+```env
+DEEPSEEK_API_KEY=你的 DeepSeek API Key
+DEEPSEEK_MODEL=你的可用模型名
+DEEPSEEK_BASE_URL=https://api.deepseek.com
+RESEND_API_KEY=re_xxx
+NOTIFICATION_FROM_EMAIL=拾光 <notifications@你的域名>
 ```
 
-## 构建检查
+## 管理员审核步骤
+
+1. 登录 `ADMIN_EMAILS` 中配置的账号。
+2. 打开 `/admin/payments`。
+3. 进入待审核订单。
+4. 在真实微信或支付宝账单中查找交易。
+5. 核对金额、付款时间和完整交易单号。
+6. 确认无误后点击“确认真实到账”。
+7. 系统原子更新付款凭证和订单，并开放制作权限。
+
+不得仅凭截图确认到账。
+
+## 安全设计
+
+- 付款截图存放在私有 Bucket 中。
+- 用户只能查看自己的审核状态，不能直接写数据库。
+- 管理员预览使用 30 分钟短时签名地址。
+- 同一交易单号只能对应一笔订单。
+- 付款确认通过数据库函数原子完成。
+- 人工付款订单未审核通过时，后台普通状态编辑不能绕过付款闸门。
+- Secret Key、二维码原图和敏感环境变量不得提交到公开仓库。
+
+## 完整检查
 
 ```bash
-npm run typecheck
-npm run build
+npm run check
 npm audit --omit=dev
 ```
 
-上线前逐项执行 `DEPLOYMENT_CHECKLIST.md`。
-
-## 尚未包含
-
-- 微信支付与支付宝商户支付；
-- 推荐奖励结算、提现与反作弊风控；
-- 短信或微信模板消息；
-- 素材批量下载与冷存储归档；
-- 视频转码与内容审核；
-- Stripe 自动退款；
-- 多角色细粒度后台权限；
-- 正式 SLA、发票、税务与跨地区消费者合规。
+详细上线步骤见 [MANUAL_PAYMENT_SETUP.md](./MANUAL_PAYMENT_SETUP.md)。

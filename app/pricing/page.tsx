@@ -9,7 +9,7 @@ export const metadata = { title: "套餐与价格｜拾光" };
 export default async function PricingPage({
   searchParams,
 }: {
-  searchParams: Promise<{ cancelled?: string; ref?: string }>;
+  searchParams: Promise<{ ref?: string }>;
 }) {
   const query = await searchParams;
   return (
@@ -43,11 +43,6 @@ export default async function PricingPage({
         <p>
           三个套餐共享同一套安全、交付和长期保存能力；差异主要在故事容量、文案支持和定制深度。
         </p>
-        {query.cancelled ? (
-          <div className="commerce-alert">
-            支付已取消，订单不会生效。你可以重新选择套餐。
-          </div>
-        ) : null}
       </section>
       <section className="pricing-grid">
         {giftPlans.map((plan) => (
@@ -71,7 +66,7 @@ export default async function PricingPage({
             </ul>
             <CheckoutButton
               planId={plan.id}
-              label={plan.id === "deep" ? "选择主推套餐" : "选择这个套餐"}
+              label={plan.id === "deep" ? "创建主推套餐订单" : "创建订单"}
               referralCode={query.ref}
             />
             <small>一次性购买，不自动续费</small>
@@ -82,13 +77,13 @@ export default async function PricingPage({
         <article>
           <strong>支付后如何开始？</strong>
           <p>
-            支付成功后进入订单页，点击“开始制作”即可进入制作台。云端模式下，订单和礼物都绑定到你的账号。
+            创建订单后进入人工付款页。付款完成后上传截图和完整交易单号，管理员核对真实到账后开放制作问卷与制作台。
           </p>
         </article>
         <article>
           <strong>目前支持什么支付？</strong>
           <p>
-            配置 Stripe 后进入真实托管收银台；本地开发可使用无扣款演示流程，生产环境默认禁止演示支付。
+            当前采用微信或支付宝人工付款审核。付款截图仅作为辅助，必须由管理员在真实收款记录中核对到账。
           </p>
         </article>
         <article>

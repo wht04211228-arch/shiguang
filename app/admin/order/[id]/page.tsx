@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import AdminOrderPanel from "@/components/AdminOrderPanel";
+import AdminManualPaymentPanel from "@/components/AdminManualPaymentPanel";
 import AdminGrowthPanel from "@/components/AdminGrowthPanel";
 import AdminFeedbackModeration from "@/components/AdminFeedbackModeration";
 import { requireAdminClaims } from "@/lib/admin/auth";
@@ -18,7 +19,7 @@ export default async function AdminOrderPage({ params }: { params: Promise<{ id:
   if (!claims && !email) redirect(`/login?next=/admin/order/${id}`);
   if (!claims) return <main className="card-state-page"><section className="card-state-card"><span>×</span><h1>没有运营后台权限</h1><p>当前登录账号不在管理员白名单中。</p><Link className="button-primary" href="/">返回首页</Link></section></main>;
   const admin = createAdminClient();
-  const [{ data: order }, { data: brief }, { data: refunds }, { data: events }, { data: reviews }, { data: tasks }, { data: customerReview }, { data: casePermission }] = await Promise.all([
+  const [{ data: order }, { data: brief }, { data: refunds }, { data: events }, { data: reviews }, { data: tasks }, { data: customerReview }, { data: casePermission }, { data: manualProof }] = await Promise.all([
     admin.from("orders").select("*,cards(slug,recipient_name,status,view_count,reply_count)").eq("id", id).maybeSingle(),
     admin.from("order_briefs").select("*").eq("order_id", id).maybeSingle(),
     admin.from("refund_requests").select("*").eq("order_id", id).order("created_at", { ascending: false }).limit(1),
@@ -27,6 +28,7 @@ export default async function AdminOrderPage({ params }: { params: Promise<{ id:
     admin.from("production_tasks").select("id,title,status,priority,assignee,due_at").eq("order_id", id).order("sort_order", { ascending: true }).order("created_at", { ascending: true }),
     admin.from("customer_reviews").select("id,rating,testimonial,display_name,public_consent,status").eq("order_id", id).maybeSingle(),
     admin.from("case_permissions").select("allow_anonymous_case,allow_quote,allow_media,public_alias,granted_at,revoked_at").eq("order_id", id).maybeSingle(),
+    admin.from("manual_payment_proofs").select("id,payment_channel,amount,transaction_reference,paid_at,review_status,review_note,proof_path").eq("order_id", id).maybeSingle(),
   ]);
   if (!order) notFound();
   const plan = getPlan(order.plan_id);
@@ -35,6 +37,11 @@ export default async function AdminOrderPage({ params }: { params: Promise<{ id:
   const card = cards[0];
   const dueLocal = order.due_at ? new Date(order.due_at).toISOString().slice(0, 16) : "";
   const latestReview = reviews?.[0] ?? null;
+  let manualProofUrl: string | null = null;
+  if (manualProof?.proof_path) {
+    const { data: signed } = await admin.storage.from("payment-proofs").createSignedUrl(manualProof.proof_path, 60 * 30);
+    manualProofUrl = signed?.signedUrl || null;
+  }
 
   return (
     <main className="commerce-page admin-order-detail">
@@ -46,6 +53,7 @@ export default async function AdminOrderPage({ params }: { params: Promise<{ id:
           <section className="admin-panel event-timeline"><p className="landing-kicker">AUDIT TRAIL</p><h2>订单事件</h2>{events?.map((event, index) => <article key={`${event.created_at}-${index}`}><span /><div><strong>{event.event_type}</strong><small>{new Date(event.created_at).toLocaleString("zh-CN")}</small></div></article>)}</section>
         </div>
         <div className="admin-panels">
+          <AdminManualPaymentPanel orderId={id} proof={manualProof ? { id: manualProof.id, paymentChannel: manualProof.payment_channel, amount: manualProof.amount, transactionReference: manualProof.transaction_reference, paidAt: manualProof.paid_at, reviewStatus: manualProof.review_status, reviewNote: manualProof.review_note, proofUrl: manualProofUrl } : null} />
           <AdminOrderPanel orderId={id} initial={{ status: order.status, serviceStage: order.service_stage || "waiting_brief", priority: order.priority || "normal", dueAt: dueLocal, assignee: order.assignee || "", internalNotes: order.internal_notes || "" }} refund={refund ? { id: refund.id, status: refund.status, reason: refund.reason, adminResponse: refund.admin_response || "" } : null} />
           <AdminGrowthPanel orderId={id} customerEmail={order.customer_email} cardSlug={card?.slug || null} latestReview={latestReview ? { round_no: latestReview.round_no, status: latestReview.status, customer_note: latestReview.customer_note, admin_note: latestReview.admin_note } : null} tasks={tasks ?? []} />
           <AdminFeedbackModeration

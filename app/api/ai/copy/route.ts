@@ -1,4 +1,3 @@
-import OpenAI from "openai";
 import { NextResponse } from "next/server";
 import { addOrderEvent } from "@/lib/commerce/orders";
 import { getPlan } from "@/lib/commerce/plans";
@@ -15,8 +14,59 @@ type CopyInput = {
   orderId?: string;
 };
 
+type CopyDraft = {
+  coverTitle: string;
+  coverSubtitle: string;
+  letter: string[];
+  futurePromises: string[];
+};
+
+type DeepSeekResponse = {
+  choices?: Array<{
+    message?: {
+      content?: string | null;
+    };
+    finish_reason?: string | null;
+  }>;
+  error?: {
+    message?: string;
+    type?: string;
+    code?: string;
+  };
+};
+
 function clean(value: unknown, maximum: number): string {
   return typeof value === "string" ? value.trim().slice(0, maximum) : "";
+}
+
+function normalizeBaseUrl(value: string | undefined): string {
+  return (value || "https://api.deepseek.com").replace(/\/+$/u, "");
+}
+
+function isCopyDraft(value: unknown): value is CopyDraft {
+  if (!value || typeof value !== "object") return false;
+  const draft = value as Partial<CopyDraft>;
+  return (
+    typeof draft.coverTitle === "string" &&
+    typeof draft.coverSubtitle === "string" &&
+    Array.isArray(draft.letter) &&
+    draft.letter.length >= 4 &&
+    draft.letter.every((item) => typeof item === "string") &&
+    Array.isArray(draft.futurePromises) &&
+    draft.futurePromises.length >= 3 &&
+    draft.futurePromises.every((item) => typeof item === "string")
+  );
+}
+
+function tidyDraft(draft: CopyDraft): CopyDraft {
+  return {
+    coverTitle: clean(draft.coverTitle, 120),
+    coverSubtitle: clean(draft.coverSubtitle, 180),
+    letter: draft.letter.slice(0, 4).map((item) => clean(item, 500)),
+    futurePromises: draft.futurePromises
+      .slice(0, 3)
+      .map((item) => clean(item, 120)),
+  };
 }
 
 const fallback = (input: CopyInput) => {
@@ -43,6 +93,77 @@ const fallback = (input: CopyInput) => {
   };
 };
 
+async function requestDeepSeek(input: CopyInput): Promise<CopyDraft> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 45_000);
+
+  try {
+    const model = process.env.DEEPSEEK_MODEL || "deepseek-v4-flash";
+    const response = await fetch(
+      `${normalizeBaseUrl(process.env.DEEPSEEK_BASE_URL)}/chat/completions`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${process.env.DEEPSEEK_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model,
+          messages: [
+            {
+              role: "system",
+              content:
+                "你是私人纪念礼物的中文文案策划师。文案必须真实、克制、具体、不油腻，不编造用户没有提供的经历。只输出符合指定结构的 JSON。",
+            },
+            {
+              role: "user",
+              content: `请根据以下资料生成电子纪念礼物文案。\n收件人：${input.recipientName || "未填写"}\n关系：${input.relationship || "重要的人"}\n场景：${input.occasion || "纪念日"}\n语气：${input.tone || "温暖真实"}\n真实细节：${input.facts || "未填写"}\n\n输出严格 JSON：{"coverTitle":"不超过40字","coverSubtitle":"不超过70字","letter":["第1段","第2段","第3段","第4段"],"futurePromises":["约定1","约定2","约定3"]}`,
+            },
+          ],
+          response_format: { type: "json_object" },
+          thinking: { type: "disabled" },
+          temperature: 0.7,
+          max_tokens: 1600,
+          stream: false,
+        }),
+        signal: controller.signal,
+        cache: "no-store",
+      },
+    );
+
+    const text = await response.text();
+    let payload: DeepSeekResponse = {};
+
+    if (text.trim()) {
+      try {
+        payload = JSON.parse(text) as DeepSeekResponse;
+      } catch {
+        throw new Error(`DeepSeek 返回了非 JSON 响应（HTTP ${response.status}）`);
+      }
+    }
+
+    if (!response.ok) {
+      const message = payload.error?.message || `HTTP ${response.status}`;
+      throw new Error(`DeepSeek 请求失败：${message}`);
+    }
+
+    const content = payload.choices?.[0]?.message?.content?.trim();
+    if (!content) throw new Error("DeepSeek 没有返回文案内容");
+
+    const parsed = JSON.parse(
+      content.replace(/^```json\s*/iu, "").replace(/```$/u, ""),
+    ) as unknown;
+
+    if (!isCopyDraft(parsed)) {
+      throw new Error("DeepSeek 返回的文案结构不完整");
+    }
+
+    return tidyDraft(parsed);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 export async function POST(request: Request) {
   const raw = (await request.json().catch(() => ({}))) as CopyInput;
   if (typeof raw.facts === "string" && raw.facts.length > 6000) {
@@ -51,6 +172,7 @@ export async function POST(request: Request) {
       { status: 413 },
     );
   }
+
   const input: CopyInput = {
     recipientName: clean(raw.recipientName, 60),
     occasion: clean(raw.occasion, 80),
@@ -62,8 +184,9 @@ export async function POST(request: Request) {
 
   if (isSupabaseAdminConfigured()) {
     const { supabase, claims } = await requireUserClaims();
-    if (!claims?.sub)
+    if (!claims?.sub) {
       return NextResponse.json({ error: "请先登录" }, { status: 401 });
+    }
     if (!input.orderId) {
       return NextResponse.json(
         { error: "AI 文案功能需要已支付订单", pricingUrl: "/pricing" },
@@ -76,8 +199,9 @@ export async function POST(request: Request) {
       .select("id, status, plan_id")
       .eq("id", input.orderId)
       .maybeSingle();
-    if (error)
+    if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
+    }
     if (
       !order ||
       !["paid", "in_progress", "fulfilled"].includes(order.status)
@@ -87,9 +211,11 @@ export async function POST(request: Request) {
         { status: 403 },
       );
     }
+
     const plan = getPlan(order.plan_id);
-    if (!plan)
+    if (!plan) {
       return NextResponse.json({ error: "订单套餐配置异常" }, { status: 500 });
+    }
 
     const admin = createAdminClient();
     const { data: nextUsed, error: quotaError } = await admin.rpc(
@@ -99,45 +225,38 @@ export async function POST(request: Request) {
         maximum_drafts: plan.limits.aiDrafts,
       },
     );
-    if (quotaError)
+    if (quotaError) {
       return NextResponse.json({ error: quotaError.message }, { status: 500 });
+    }
     if (typeof nextUsed !== "number") {
       return NextResponse.json(
         { error: `当前套餐最多生成 ${plan.limits.aiDrafts} 次 AI 草稿` },
         { status: 429 },
       );
     }
+
     await addOrderEvent(order.id, "ai.copy.generated", {
       used: nextUsed,
+      provider: process.env.DEEPSEEK_API_KEY ? "deepseek" : "local",
     }).catch(console.error);
   }
 
-  if (!process.env.OPENAI_API_KEY || !isSupabaseAdminConfigured()) {
+  if (!process.env.DEEPSEEK_API_KEY || !isSupabaseAdminConfigured()) {
     return NextResponse.json(fallback(input));
   }
 
   try {
-    const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-    const response = await client.responses.create({
-      model: process.env.OPENAI_MODEL || "gpt-5-mini",
-      input: `你是私人纪念礼物的中文文案策划师。请根据真实细节写克制、具体、不油腻的文案。\n收件人：${input.recipientName || "未填写"}\n关系：${input.relationship || "重要的人"}\n场景：${input.occasion || "纪念日"}\n语气：${input.tone || "温暖真实"}\n真实细节：${input.facts || "未填写"}\n只输出严格 JSON，不要 markdown。格式：{"coverTitle":"...","coverSubtitle":"...","letter":["...","...","...","..."],"futurePromises":["...","...","..."]}`,
+    const draft = await requestDeepSeek(input);
+    return NextResponse.json({
+      ...draft,
+      provider: "deepseek",
+      model: process.env.DEEPSEEK_MODEL || "deepseek-v4-flash",
     });
-    const text = response.output_text
-      .trim()
-      .replace(/^```json\s*/i, "")
-      .replace(/```$/, "");
-    const parsed = JSON.parse(text) as {
-      coverTitle: string;
-      coverSubtitle: string;
-      letter: string[];
-      futurePromises: string[];
-    };
-    return NextResponse.json({ ...parsed, provider: "openai" });
   } catch (error) {
-    console.error(error);
+    console.error("[deepseek-copy]", error);
     return NextResponse.json({
       ...fallback(input),
-      warning: "AI 服务暂时不可用，已返回本地草稿",
+      warning: "DeepSeek 暂时不可用，已返回本地草稿",
     });
   }
 }

@@ -205,7 +205,7 @@ export default function HomePage() {
           <strong>拾光</strong>
           <span>把共同经历过的时间，重新送给重要的人一次。</span>
         </div>
-        <small>Next.js · Supabase · Stripe · OpenAI · Resend</small>
+        <small>Next.js · Supabase · 人工付款审核 · DeepSeek · Resend</small>
       </footer>
     </main>
   );

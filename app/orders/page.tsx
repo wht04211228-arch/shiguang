@@ -66,7 +66,7 @@ export default async function OrdersPage() {
       <section className="commerce-hero compact">
         <p className="landing-kicker">ORDER CENTER</p>
         <h1>我的订单</h1>
-        <p>查看支付状态、制作进度和对应的专属礼物。</p>
+        <p>查看付款审核状态、制作进度和对应的专属礼物。</p>
       </section>
       {error ? <div className="commerce-alert">{error.message}</div> : null}
       <section className="order-list">
@@ -89,7 +89,7 @@ export default async function OrdersPage() {
                   <h2>{plan?.name ?? order.plan_id}</h2>
                   <p>
                     订单号 {order.id.slice(0, 8)} ·{" "}
-                    {order.payment_provider === "demo" ? "演示支付" : "Stripe"}
+                    {order.payment_provider === "demo" ? "演示订单" : order.payment_provider === "manual" ? "人工付款" : order.payment_provider}
                   </p>
                 </div>
                 <div>

@@ -1,84 +1,62 @@
-# 拾光 v0.6 构建与验收报告
+# 拾光 v0.7 人工付款审核版｜构建与验收报告
 
-验收日期：2026-07-14
+生成日期：2026-07-14
 
-## 工程检查
+## 自动检查
 
-| 项目 | 结果 |
+| 检查 | 结果 |
 |---|---|
-| `npm install --ignore-scripts` | 通过 |
+| `npm ci --ignore-scripts` | 通过 |
 | `npm run typecheck` | 通过 |
 | `npm run build` | 通过 |
 | `npm audit --omit=dev` | 0 个已知漏洞 |
-| Next.js 生产服务器启动 | 通过 |
-| 真实凭据扫描 | 未写入任何真实密钥 |
+| 首页 `/` | HTTP 200 |
+| 套餐页 `/pricing` | HTTP 200 |
+| 订单演示页 `/order/demo?plan=deep` | HTTP 200 |
+| 规则页面 | HTTP 200 |
+| 未同意条款创建订单 | HTTP 400，符合预期 |
+| 本地演示创建订单 | HTTP 200 |
+| 未配置云端上传付款凭证 | HTTP 503，符合预期 |
 
-生产构建使用：
+## 生产构建路由
 
-```text
-Next.js 16.2.10
-React 19.2.7
-TypeScript 5.9.x
-```
-
-## 构建路由
-
-新增或强化的关键路由：
+新增或替换的关键路由：
 
 ```text
-/api/reviews
-/api/feedback
-/api/referrals
-/api/referrals/track
-/api/cron/reminders
-/referrals
-/admin/order/[id]
-/order/[id]
-/cases
+/pay/manual/[id]
+/order/[id]/payment-proof
+/admin/payments
+/api/manual-payments/proof
+/api/admin/orders/[id]
+/api/checkout
 ```
 
-## 本地运行验收
+Stripe Checkout、Stripe Webhook 与 Stripe npm 依赖已经从运行代码中删除。
 
-| 场景 | 预期 | 结果 |
-|---|---:|---:|
-| 首页 | HTTP 200 | 通过 |
-| 带推荐码套餐页 | HTTP 200 | 通过 |
-| 演示订单详情 | HTTP 200 | 通过 |
-| 推荐中心 | HTTP 200 | 通过 |
-| 运营后台演示模式 | HTTP 200 | 通过 |
-| 收件人样片 | HTTP 200 | 通过 |
-| 案例与评价页 | HTTP 200 | 通过 |
-| 未同意条款下单 | HTTP 400 | 通过 |
-| 同意条款并携带推荐码 | HTTP 200 | 通过 |
-| 修改意见少于 8 字 | HTTP 400 | 通过 |
-| 合法修改意见 | HTTP 200 | 通过 |
-| 评分超出 1–5 | HTTP 400 | 通过 |
-| 合法评价 | HTTP 200 | 通过 |
-| 推荐数据演示接口 | HTTP 200 | 通过 |
-| Cron 无授权 | HTTP 401 | 通过 |
-| Cron 正确授权、无 Supabase | HTTP 200 演示降级 | 通过 |
+## 安全核对
 
-## 安全与流程修正
+- 付款凭证存放在私有 `payment-proofs` Bucket。
+- 商户收款码建议存放在私有 `merchant-assets` Bucket。
+- 用户仅有自己凭证记录的读取权限，没有直接写入权限。
+- 凭证上传和审核通过服务端 API 完成。
+- 管理员凭证预览使用 30 分钟签名地址。
+- 商户收款码使用 15 分钟签名地址。
+- 同一完整交易单号只能绑定一个订单。
+- 人工付款通过数据库函数原子更新凭证和订单。
+- 普通管理员订单状态操作不能绕过付款审核。
+- 未确认到账时，问卷、素材上传、AI文案和云端发布均保持关闭。
 
-- 制作台发布只进入制作中，不再提前把订单标记为已交付。
-- 客户批准初稿后才写入 `fulfilled_at` 并进入正式交付。
-- 修改次数在服务端按套餐额度校验。
-- M6 数据表启用 RLS；普通登录用户仅获得必要的只读权限，写操作通过服务端 API 校验。
-- 自动提醒使用 `CRON_SECRET` 验证请求。
-- 自动提醒发送前创建每日唯一 `dedupe_key`，应对平台重复触发。
-- 推荐打开按推荐码与匿名会话去重。
-- 自己的推荐码不会归因到自己的订单。
-- 公开评价必须同时满足客户授权和运营审核。
+## 尚未执行的真实环境测试
 
-## 未执行的真实服务验收
+当前环境没有用户的 Supabase 与 Resend 凭据，因此以下项目需要部署后验证：
 
-当前环境没有用户的第三方凭据，因此以下项目只完成了代码、类型和生产构建检查：
+- 执行 `007_manual_payment_review.sql`
+- 私有 Bucket 真实上传与签名预览
+- 两个用户账号之间的 RLS 隔离
+- 用户提交真实付款凭证
+- 管理员通过／驳回
+- 原子付款确认函数
+- 付款通知邮件
+- 真实小额到账核对
 
-- Supabase 迁移与真实 RLS 双账号测试；
-- Resend 实际邮件投递；
-- Vercel Cron 正式调度；
-- Stripe 真实支付和 Webhook 推荐归因；
-- 真实客户评价审核后在案例页展示；
-- 多账号推荐转化统计。
-
-正式上线前请按 `DEPLOYMENT_CHECKLIST.md` 逐项验收。
+上线时按照 `MANUAL_PAYMENT_SETUP.md` 和 `DEPLOYMENT_CHECKLIST.md` 逐项完成。

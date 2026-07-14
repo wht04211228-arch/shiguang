@@ -63,9 +63,9 @@ export default function AICopyAssistant({
       });
       onGenerated?.();
       setStatus(
-        body.provider === "openai"
-          ? "已生成 AI 草稿并应用，可继续逐句修改。"
-          : "已使用本地文案引擎生成草稿；配置 OpenAI 后可启用更强生成。",
+        body.provider === "deepseek"
+          ? "已使用 DeepSeek 生成草稿并应用，可继续逐句修改。"
+          : "已使用本地文案引擎生成草稿；配置 DeepSeek 后可启用智能生成。",
       );
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "生成失败");

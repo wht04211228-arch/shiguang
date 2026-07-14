@@ -126,6 +126,36 @@ export async function markOrderPaid(
   return { order: data as OrderRow, changed: true };
 }
 
+
+export async function finalizeManualPayment(input: {
+  orderId: string;
+  proofId: string;
+  reviewerId: string;
+  reviewNote?: string | null;
+}) {
+  const admin = createAdminClient();
+  const { data, error } = await admin.rpc("approve_manual_payment", {
+    target_proof_id: input.proofId,
+    target_order_id: input.orderId,
+    target_reviewer_id: input.reviewerId,
+    target_review_note: input.reviewNote || null,
+  });
+  if (error) throw error;
+  const order = data as {
+    id: string;
+    owner_id: string;
+    plan_id: PlanId;
+    amount: number;
+    customer_email: string;
+    referred_by_code: string | null;
+    changed: boolean;
+  };
+  if (order.changed) {
+    await markReferralConverted(order.id, order.referred_by_code).catch(console.error);
+  }
+  return { order, changed: order.changed };
+}
+
 export async function setOrderPaymentSession(
   orderId: string,
   sessionId: string,
