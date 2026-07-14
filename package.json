@@ -1,0 +1,37 @@
+{
+  "name": "shiguang-digital-memory-gift",
+  "version": "0.6.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "check": "npm run typecheck && npm run build",
+    "secret": "node scripts/generate-secret.mjs"
+  },
+  "dependencies": {
+    "@supabase/ssr": "^0.12.1",
+    "@supabase/supabase-js": "^2.110.3",
+    "browser-image-compression": "^2.0.2",
+    "next": "16.2.10",
+    "openai": "^6.46.0",
+    "postcss": "^8.5.10",
+    "qrcode": "^1.5.4",
+    "react": "19.2.7",
+    "react-dom": "19.2.7",
+    "resend": "^6.17.2",
+    "stripe": "^22.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "@types/qrcode": "^1.5.6",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "typescript": "^5.9.0"
+  },
+  "description": "拾光增长与交付效率版：初稿确认、修改管理、任务提醒、评价授权与推荐追踪",
+  "overrides": {
+    "postcss": "$postcss"
+  }
+}
