@@ -13,6 +13,8 @@ export type GiftPlan = {
     revisions: number;
     aiDrafts: number;
     retentionDays: number | null;
+    videoCount: number;
+    videoSeconds: number;
   };
 };
 
@@ -26,10 +28,11 @@ export const giftPlans: GiftPlan[] = [
       "C · 温暖胶片主线主题",
       "最多 8 段回忆",
       "照片与背景音乐",
-      "专属链接与二维码",
-      "收件人私密回复",
+      "专属链接、二维码与定时开启",
+      "收件人心情与私密回复",
+      "30天默认保存，可补差价延长",
     ],
-    limits: { memories: 8, revisions: 1, aiDrafts: 3, retentionDays: 365 },
+    limits: { memories: 8, revisions: 1, aiDrafts: 3, retentionDays: 30, videoCount: 0, videoSeconds: 0 },
   },
   {
     id: "deep",
@@ -42,10 +45,11 @@ export const giftPlans: GiftPlan[] = [
       "A/B/C 三主题切换",
       "最多 20 段回忆",
       "AI 文案整理与润色",
-      "声音、未来约定与双向回复",
-      "长期链接与自主修改",
+      "互动问答、隐藏惊喜与双向回复",
+      "最多3段视频，每段不超过30秒",
+      "体验数据、自主修改与30天默认保存",
     ],
-    limits: { memories: 20, revisions: 3, aiDrafts: 12, retentionDays: null },
+    limits: { memories: 20, revisions: 3, aiDrafts: 12, retentionDays: 30, videoCount: 3, videoSeconds: 30 },
   },
   {
     id: "private",
@@ -56,10 +60,11 @@ export const giftPlans: GiftPlan[] = [
       "专属故事结构设计",
       "最多 60 段回忆",
       "人工文案策划",
-      "专属视觉与复杂交互",
-      "优先交付与人工修改服务",
+      "专属视觉、复杂互动与惊喜策划",
+      "最多10段视频，每段不超过60秒",
+      "体验优化、优先交付与人工修改服务",
     ],
-    limits: { memories: 60, revisions: 5, aiDrafts: 30, retentionDays: null },
+    limits: { memories: 60, revisions: 5, aiDrafts: 30, retentionDays: 30, videoCount: 10, videoSeconds: 60 },
   },
 ];
 

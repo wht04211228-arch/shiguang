@@ -1,6 +1,6 @@
 {
   "name": "shiguang-digital-memory-gift",
-  "version": "0.7.0",
+  "version": "0.9.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -28,7 +28,7 @@
     "@types/react-dom": "^19.1.0",
     "typescript": "^5.9.0"
   },
-  "description": "拾光人工付款审核版：微信/支付宝人工付款、私有凭证上传、管理员到账核对与完整交付闭环",
+  "description": "拾光多人秘密共创纪念空间：自助制作、分层邀请、长期保存、收件人共同管理与全新引导式视觉工作台",
   "overrides": {
     "postcss": "$postcss"
   },

@@ -14,7 +14,7 @@ export async function GET(_request: Request, context: RouteContext) {
   const { id } = await context.params;
   const { data, error } = await supabase
     .from("orders")
-    .select("id, plan_id, status, amount, ai_drafts_used, created_at, paid_at, fulfilled_at")
+    .select("id, plan_id, status, amount, ai_drafts_used, created_at, paid_at, fulfilled_at, invite_tier, invite_limit, retention_tier, retention_expires_at, order_kind, parent_order_id")
     .eq("id", id)
     .maybeSingle();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

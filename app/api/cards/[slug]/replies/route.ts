@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getCardAvailability } from "@/lib/cards/availability";
+import { replyMoodLabels, type ReplyMood } from "@/lib/card-data";
 import { accessCookieName, verifyAccessToken } from "@/lib/security/secrets";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isSupabaseAdminConfigured } from "@/lib/supabase/config";
@@ -6,6 +8,14 @@ import { requireUserClaims } from "@/lib/supabase/auth";
 import { sendNotification } from "@/lib/notifications";
 
 type RouteContext = { params: Promise<{ slug: string }> };
+
+const validMoods = new Set<ReplyMood>([
+  "touched",
+  "happy",
+  "surprised",
+  "teary",
+  "calm",
+]);
 
 export async function GET(_request: NextRequest, context: RouteContext) {
   if (!isSupabaseAdminConfigured())
@@ -25,7 +35,7 @@ export async function GET(_request: NextRequest, context: RouteContext) {
     return NextResponse.json({ error: "没有找到这份礼物" }, { status: 404 });
   const { data, error } = await supabase
     .from("card_replies")
-    .select("id, message, created_at")
+    .select("id, message, mood, created_at")
     .eq("card_id", card.id)
     .order("created_at", { ascending: false });
   if (error)
@@ -35,9 +45,15 @@ export async function GET(_request: NextRequest, context: RouteContext) {
 
 export async function POST(request: NextRequest, context: RouteContext) {
   const { slug } = await context.params;
-  const body = (await request.json().catch(() => ({}))) as { message?: string };
+  const body = (await request.json().catch(() => ({}))) as {
+    message?: string;
+    mood?: ReplyMood;
+  };
   const message =
     typeof body.message === "string" ? body.message.trim().slice(0, 1500) : "";
+  const mood = validMoods.has(body.mood as ReplyMood)
+    ? (body.mood as ReplyMood)
+    : "touched";
   if (!message)
     return NextResponse.json({ error: "请先写下回应" }, { status: 400 });
   if (slug === "sample" || !isSupabaseAdminConfigured())
@@ -46,7 +62,9 @@ export async function POST(request: NextRequest, context: RouteContext) {
   const admin = createAdminClient();
   const { data: card, error } = await admin
     .from("cards")
-    .select("id, owner_id, recipient_name, unlock_answer_hash")
+    .select(
+      "id, owner_id, recipient_name, unlock_answer_hash, release_at, expires_at",
+    )
     .eq("slug", slug)
     .eq("status", "published")
     .maybeSingle();
@@ -54,6 +72,14 @@ export async function POST(request: NextRequest, context: RouteContext) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   if (!card)
     return NextResponse.json({ error: "没有找到这份礼物" }, { status: 404 });
+
+  const availability = getCardAvailability(card);
+  if (availability.state !== "available") {
+    return NextResponse.json(
+      { error: availability.state === "pending" ? "礼物尚未开启" : "礼物已失效" },
+      { status: availability.state === "pending" ? 423 : 410 },
+    );
+  }
 
   if (card.unlock_answer_hash) {
     const token = request.cookies.get(accessCookieName(slug))?.value;
@@ -64,7 +90,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
   const { error: insertError } = await admin
     .from("card_replies")
-    .insert({ card_id: card.id, message });
+    .insert({ card_id: card.id, message, mood });
   if (insertError)
     return NextResponse.json({ error: insertError.message }, { status: 500 });
 
@@ -77,7 +103,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     await sendNotification({
       to: ownerEmail,
       subject: `拾光收到新回复｜${card.recipient_name}`,
-      title: "你的数字礼物收到了一条新回应",
+      title: `你的数字礼物收到了一条新回应 · ${replyMoodLabels[mood]}`,
       body: message.length > 120 ? `${message.slice(0, 120)}…` : message,
       actionUrl: `${siteUrl}/studio`,
       actionLabel: "查看完整回复",

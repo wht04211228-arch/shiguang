@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { lockedCard, sampleCard } from "@/lib/card-data";
+import { getCardAvailability } from "@/lib/cards/availability";
 import { resolveMedia, rowToCard, type CardRow } from "@/lib/db/cards";
 import { accessCookieName, verifyAccessToken } from "@/lib/security/secrets";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -68,11 +69,37 @@ export async function GET(request: NextRequest, context: RouteContext) {
 
   const row = data as CardRow;
   const card = rowToCard(row);
+  const availability = getCardAvailability(row);
+  if (availability.state === "expired") {
+    return NextResponse.json(
+      {
+        error: "这份礼物已经结束展示。",
+        expired: true,
+        expiresAt: availability.expiresAt,
+      },
+      { status: 410 },
+    );
+  }
+  if (availability.state === "pending") {
+    return NextResponse.json({
+      card: lockedCard(card),
+      locked: true,
+      releasePending: true,
+      availableAt: availability.releaseAt,
+      source: "supabase-public",
+    });
+  }
+
   const token = request.cookies.get(accessCookieName(slug))?.value;
   const unlocked = !row.unlock_answer_hash || verifyAccessToken(token, row.id);
 
   if (unlocked) {
     await admin.rpc("increment_card_view", { target_card_id: row.id });
+    await admin
+      .from("collaboration_spaces")
+      .update({ recipient_opened_at: new Date().toISOString() })
+      .eq("card_id", row.id)
+      .is("recipient_opened_at", null);
   }
   return NextResponse.json({
     card: unlocked ? await resolveMedia(card) : lockedCard(card),

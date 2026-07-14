@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sampleCard } from "@/lib/card-data";
+import { getCardAvailability } from "@/lib/cards/availability";
 import { resolveMedia, rowToCard, type CardRow } from "@/lib/db/cards";
 import {
   accessCookieName,
@@ -48,6 +49,20 @@ export async function POST(request: NextRequest, context: RouteContext) {
     );
 
   const row = data as CardRow;
+  const availability = getCardAvailability(row);
+  if (availability.state === "pending") {
+    return NextResponse.json(
+      { error: "还没有到开启时间。", availableAt: availability.releaseAt },
+      { status: 423 },
+    );
+  }
+  if (availability.state === "expired") {
+    return NextResponse.json(
+      { error: "这份礼物已经结束展示。" },
+      { status: 410 },
+    );
+  }
+
   if (!verifyAnswer(answer, row.unlock_answer_hash)) {
     return NextResponse.json(
       { error: "答案还差一点，再想想属于你们的那一天。" },
@@ -72,5 +87,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
     },
   );
   await admin.rpc("increment_card_view", { target_card_id: row.id });
+  await admin
+    .from("collaboration_spaces")
+    .update({ recipient_opened_at: new Date().toISOString() })
+    .eq("card_id", row.id)
+    .is("recipient_opened_at", null);
   return response;
 }

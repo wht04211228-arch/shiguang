@@ -1,20 +1,91 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { CardData, CardTheme } from "@/lib/card-data";
-import { themeNames } from "@/lib/card-data";
+import RecipientMemorySpace from "@/components/RecipientMemorySpace";
+import ReportIssueButton from "@/components/ReportIssueButton";
+import type {
+  CardData,
+  CardTheme,
+  ReplyMood,
+} from "@/lib/card-data";
+import type { MemorySpaceSummary, RecipientEntry, RecipientEntryType, RecipientMediaAsset } from "@/lib/memory-space/types";
+import {
+  replyMoodLabels,
+  themeNames,
+} from "@/lib/card-data";
 
 type AsyncResult = { ok: boolean; error?: string };
+type EngagementPayload = {
+  eventType: string;
+  stageKey?: string;
+  metadata?: Record<string, unknown>;
+};
 
 type MemoryGiftProps = {
   card: CardData;
   embedded?: boolean;
   allowThemeSwitch?: boolean;
   onUnlock?: (answer: string) => Promise<AsyncResult>;
-  onReply?: (message: string) => Promise<AsyncResult>;
+  onReply?: (message: string, mood: ReplyMood) => Promise<AsyncResult>;
+  onEngagement?: (payload: EngagementPayload) => void | Promise<void>;
+  memorySpace?: MemorySpaceSummary | null;
+  memorySpaceLoading?: boolean;
+  onCreateMemoryEntry?: (
+    entryType: RecipientEntryType,
+    content: string,
+    media: RecipientMediaAsset[],
+  ) => Promise<{ ok: boolean; error?: string; data?: RecipientEntry }>;
+  onUploadMemoryMedia?: (
+    file: File,
+  ) => Promise<{ ok: boolean; error?: string; data?: RecipientMediaAsset }>;
+  onClaimMemorySpace?: () => Promise<AsyncResult>;
+  onRequestInvitePermission?: () => Promise<AsyncResult>;
+  onCreateRecipientInvite?: (expectedName: string) => Promise<{ ok: boolean; error?: string; data?: { url: string } }>;
 };
 
-const stageLabels = ["封面", "拆礼物", "回忆", "碎片", "信件", "未来", "回应"];
+type StageKey =
+  | "cover"
+  | "tabletop"
+  | "memories"
+  | "fragments"
+  | "collaboration"
+  | "quiz"
+  | "letter"
+  | "future"
+  | "surprise"
+  | "reply";
+
+const stageLabels: Record<StageKey, string> = {
+  cover: "封面",
+  tabletop: "拆礼物",
+  memories: "回忆",
+  fragments: "碎片",
+  collaboration: "祝福",
+  quiz: "小问答",
+  letter: "信件",
+  future: "未来",
+  surprise: "惊喜",
+  reply: "回应",
+};
+
+function countdownParts(target?: string) {
+  if (!target) return null;
+  const diff = Math.max(0, Date.parse(target) - Date.now());
+  return {
+    total: diff,
+    days: Math.floor(diff / 86_400_000),
+    hours: Math.floor((diff / 3_600_000) % 24),
+    minutes: Math.floor((diff / 60_000) % 60),
+    seconds: Math.floor((diff / 1000) % 60),
+  };
+}
+
+function relationshipDays(value?: string) {
+  if (!value) return null;
+  const start = Date.parse(value);
+  if (!Number.isFinite(start)) return null;
+  return Math.max(1, Math.floor((Date.now() - start) / 86_400_000) + 1);
+}
 
 export default function MemoryGift({
   card,
@@ -22,13 +93,22 @@ export default function MemoryGift({
   allowThemeSwitch = false,
   onUnlock,
   onReply,
+  onEngagement,
+  memorySpace = null,
+  memorySpaceLoading = false,
+  onCreateMemoryEntry,
+  onUploadMemoryMedia,
+  onClaimMemorySpace,
+  onRequestInvitePermission,
+  onCreateRecipientInvite,
 }: MemoryGiftProps) {
   const [theme, setTheme] = useState<CardTheme>(card.theme);
-  const [stage, setStage] = useState(0);
+  const [stageIndex, setStageIndex] = useState(0);
   const [memoryIndex, setMemoryIndex] = useState(0);
   const [answer, setAnswer] = useState("");
   const [unlockError, setUnlockError] = useState("");
   const [reply, setReply] = useState("");
+  const [replyMood, setReplyMood] = useState<ReplyMood>("touched");
   const [replySaved, setReplySaved] = useState(false);
   const [unlockBusy, setUnlockBusy] = useState(false);
   const [replyBusy, setReplyBusy] = useState(false);
@@ -37,24 +117,76 @@ export default function MemoryGift({
     card.futurePromises.map(() => false),
   );
   const [musicPlaying, setMusicPlaying] = useState(false);
+  const [clock, setClock] = useState(() => Date.now());
+  const [quizChoice, setQuizChoice] = useState<number | null>(null);
+  const [quizResult, setQuizResult] = useState<"idle" | "correct" | "wrong">(
+    "idle",
+  );
+  const surpriseTracked = useRef(false);
+  const lastTrackedStage = useRef("");
   const audioRef = useRef<HTMLAudioElement>(null);
+
+  const releasePending = useMemo(() => {
+    if (embedded || !card.releaseAt) return false;
+    return Date.parse(card.releaseAt) > clock;
+  }, [card.releaseAt, clock, embedded]);
+
+  const expired = useMemo(() => {
+    if (embedded || !card.expiresAt) return false;
+    return Date.parse(card.expiresAt) <= clock;
+  }, [card.expiresAt, clock, embedded]);
+
+  const stages = useMemo<StageKey[]>(() => {
+    const items: StageKey[] = ["cover", "tabletop"];
+    if (card.memories.length) items.push("memories");
+    if (card.fragments.length) items.push("fragments");
+    if (card.collaborations?.length) items.push("collaboration");
+    if (card.quiz?.enabled && card.quiz.options.length >= 2) items.push("quiz");
+    if (card.letter.length) items.push("letter");
+    if (card.futurePromises.length || card.relationshipStartDate)
+      items.push("future");
+    if (card.surprise?.enabled) items.push("surprise");
+    items.push("reply");
+    return items;
+  }, [card]);
+
+  const stage = stages[Math.min(stageIndex, stages.length - 1)] ?? "cover";
+  const activeMemory = card.memories[memoryIndex] ?? card.memories[0];
+  const progress = ((stageIndex + 1) / stages.length) * 100;
+  const countdown = countdownParts(card.releaseAt);
+  const daysTogether = relationshipDays(card.relationshipStartDate);
 
   useEffect(() => {
     setTheme(card.theme);
     setCheckedPromises(card.futurePromises.map(() => false));
+    setStageIndex(0);
+    setMemoryIndex(0);
+    setQuizChoice(null);
+    setQuizResult("idle");
   }, [card]);
 
-  const activeMemory = card.memories[memoryIndex] ?? card.memories[0];
-  const progress = useMemo(
-    () => ((stage + 1) / stageLabels.length) * 100,
-    [stage],
-  );
+  useEffect(() => {
+    if (!card.releaseAt && !card.expiresAt) return;
+    const timer = window.setInterval(() => setClock(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [card.expiresAt, card.releaseAt]);
+
+  useEffect(() => {
+    if (releasePending || expired || stage === "cover") return;
+    const key = `${card.slug}:${stage}`;
+    if (lastTrackedStage.current === key) return;
+    lastTrackedStage.current = key;
+    void onEngagement?.({ eventType: "stage_viewed", stageKey: stage });
+    if (stage === "reply") void onEngagement?.({ eventType: "completed" });
+  }, [card.slug, expired, onEngagement, releasePending, stage]);
 
   const nextStage = () =>
-    setStage((current) => Math.min(stageLabels.length - 1, current + 1));
-  const previousStage = () => setStage((current) => Math.max(0, current - 1));
+    setStageIndex((current) => Math.min(stages.length - 1, current + 1));
+  const previousStage = () =>
+    setStageIndex((current) => Math.max(0, current - 1));
 
   const unlock = async () => {
+    if (releasePending || expired) return;
     setUnlockBusy(true);
     setUnlockError("");
     if (onUnlock) {
@@ -64,14 +196,14 @@ export default function MemoryGift({
         setUnlockError(result.error || "暂时无法打开这份礼物。");
         return;
       }
-      setStage(1);
+      setStageIndex(1);
       return;
     }
 
     const expected = card.unlockAnswer.trim().toLowerCase();
     setUnlockBusy(false);
     if (!expected || answer.trim().toLowerCase() === expected) {
-      setStage(1);
+      setStageIndex(1);
       return;
     }
     setUnlockError("答案还差一点，再想想属于你们的那一天。");
@@ -92,12 +224,32 @@ export default function MemoryGift({
     }
   };
 
+  const submitQuiz = () => {
+    if (!card.quiz || quizChoice === null) return;
+    if (quizChoice === card.quiz.answerIndex) {
+      setQuizResult("correct");
+      void onEngagement?.({
+        eventType: "quiz_completed",
+        stageKey: "quiz",
+        metadata: { correct: true },
+      });
+    } else {
+      setQuizResult("wrong");
+    }
+  };
+
+  const openSurprise = () => {
+    if (surpriseTracked.current) return;
+    surpriseTracked.current = true;
+    void onEngagement?.({ eventType: "surprise_opened", stageKey: "surprise" });
+  };
+
   const saveReply = async () => {
     if (!reply.trim()) return;
     setReplyBusy(true);
     setReplyError("");
     if (onReply) {
-      const result = await onReply(reply.trim());
+      const result = await onReply(reply.trim(), replyMood);
       setReplyBusy(false);
       if (!result.ok) {
         setReplyError(result.error || "回应保存失败，请稍后重试。");
@@ -108,6 +260,22 @@ export default function MemoryGift({
     }
     setReplySaved(true);
   };
+
+  if (expired) {
+    return (
+      <article className={`memory-gift theme-${theme}`}>
+        <main className="gift-stage-container">
+          <section className="gift-stage gift-cover-stage expiry-stage">
+            <p className="gift-kicker">A MEMORY KEPT WITH CARE</p>
+            <h1>这份礼物已经结束展示。</h1>
+            <p className="gift-lead">
+              它曾在约定的时间里为你打开。需要重新查看时，请联系送礼人延长展示时间。
+            </p>
+          </section>
+        </main>
+      </article>
+    );
+  }
 
   return (
     <article
@@ -149,6 +317,7 @@ export default function MemoryGift({
               </select>
             </label>
           ) : null}
+          {!embedded ? <ReportIssueButton slug={card.slug} /> : null}
           {card.musicUrl ? (
             <button
               className="icon-button"
@@ -162,48 +331,79 @@ export default function MemoryGift({
         </div>
       </header>
 
-      <div
-        className="gift-progress"
-        aria-label={`当前进度：${stageLabels[stage]}`}
-      >
+      <div className="gift-progress" aria-label={`当前进度：${stageLabels[stage]}`}>
         <span style={{ width: `${progress}%` }} />
       </div>
 
       <main className="gift-stage-container">
-        {stage === 0 ? (
+        {stage === "cover" ? (
           <section className="gift-stage gift-cover-stage">
-            <p className="gift-kicker">{card.coverKicker}</p>
-            <p className="recipient-chip">TO · {card.recipientName}</p>
-            <h1>{card.coverTitle}</h1>
-            <p className="gift-lead">{card.coverSubtitle}</p>
-            <div className="unlock-card">
-              <label htmlFor={`answer-${embedded ? "embedded" : "full"}`}>
-                {card.unlockQuestion ||
-                  (onUnlock ? "请输入解锁答案" : "点击打开这份礼物")}
-              </label>
-              {card.unlockQuestion || onUnlock ? (
-                <input
-                  id={`answer-${embedded ? "embedded" : "full"}`}
-                  value={answer}
-                  onChange={(event) => setAnswer(event.target.value)}
-                  onKeyDown={(event) => event.key === "Enter" && void unlock()}
-                  placeholder="输入你的答案"
-                />
-              ) : null}
-              {unlockError ? <p className="form-error">{unlockError}</p> : null}
-              <button
-                type="button"
-                className="gift-primary-button"
-                onClick={() => void unlock()}
-                disabled={unlockBusy}
-              >
-                {unlockBusy ? "正在打开…" : "打开这份礼物"}
-              </button>
-            </div>
+            {releasePending && countdown ? (
+              <div className="release-countdown-card">
+                <p className="gift-kicker">OPEN AT THE RIGHT MOMENT</p>
+                <p className="recipient-chip">TO · {card.recipientName}</p>
+                <h1>{card.preReleaseTitle || "这份礼物还在等待最合适的时刻"}</h1>
+                <p className="gift-lead">
+                  {card.preReleaseMessage || "倒计时结束后，它会自动开启。"}
+                </p>
+                <div className="countdown-grid" aria-label="礼物开启倒计时">
+                  <span><strong>{countdown.days}</strong><small>天</small></span>
+                  <span><strong>{String(countdown.hours).padStart(2, "0")}</strong><small>时</small></span>
+                  <span><strong>{String(countdown.minutes).padStart(2, "0")}</strong><small>分</small></span>
+                  <span><strong>{String(countdown.seconds).padStart(2, "0")}</strong><small>秒</small></span>
+                </div>
+                <small className="release-time-copy">
+                  开启时间：{new Date(card.releaseAt || "").toLocaleString("zh-CN")}
+                </small>
+              </div>
+            ) : card.releaseAt && countdown?.total === 0 && !embedded && !card.memories.length ? (
+              <div className="release-countdown-card">
+                <p className="gift-kicker">THE MOMENT HAS ARRIVED</p>
+                <h1>时间到了，这份礼物已经可以打开。</h1>
+                <button
+                  type="button"
+                  className="gift-primary-button"
+                  onClick={() => window.location.reload()}
+                >
+                  重新加载并打开
+                </button>
+              </div>
+            ) : (
+              <>
+                <p className="gift-kicker">{card.coverKicker}</p>
+                <p className="recipient-chip">TO · {card.recipientName}</p>
+                <h1>{card.coverTitle}</h1>
+                <p className="gift-lead">{card.coverSubtitle}</p>
+                <div className="unlock-card">
+                  <label htmlFor={`answer-${embedded ? "embedded" : "full"}`}>
+                    {card.unlockQuestion ||
+                      (onUnlock ? "请输入解锁答案" : "点击打开这份礼物")}
+                  </label>
+                  {card.unlockQuestion || onUnlock ? (
+                    <input
+                      id={`answer-${embedded ? "embedded" : "full"}`}
+                      value={answer}
+                      onChange={(event) => setAnswer(event.target.value)}
+                      onKeyDown={(event) => event.key === "Enter" && void unlock()}
+                      placeholder="输入你的答案"
+                    />
+                  ) : null}
+                  {unlockError ? <p className="form-error">{unlockError}</p> : null}
+                  <button
+                    type="button"
+                    className="gift-primary-button"
+                    onClick={() => void unlock()}
+                    disabled={unlockBusy}
+                  >
+                    {unlockBusy ? "正在打开…" : "打开这份礼物"}
+                  </button>
+                </div>
+              </>
+            )}
           </section>
         ) : null}
 
-        {stage === 1 ? (
+        {stage === "tabletop" ? (
           <section className="gift-stage tabletop-stage">
             <div className="tabletop-scene">
               <div className="table-ticket">
@@ -221,12 +421,8 @@ export default function MemoryGift({
                 <small>THE DAYS WE SHARED</small>
                 <em>点击翻开相册</em>
               </button>
-              <div className="table-polaroid polaroid-a">
-                <span />
-              </div>
-              <div className="table-polaroid polaroid-b">
-                <span />
-              </div>
+              <div className="table-polaroid polaroid-a"><span /></div>
+              <div className="table-polaroid polaroid-b"><span /></div>
             </div>
             <p className="stage-support-copy">
               从第一张照片开始，重新走一遍共同经历过的时间。
@@ -234,7 +430,7 @@ export default function MemoryGift({
           </section>
         ) : null}
 
-        {stage === 2 && activeMemory ? (
+        {stage === "memories" && activeMemory ? (
           <section className="gift-stage memory-stage">
             <div className="memory-heading">
               <p className="gift-kicker">
@@ -256,23 +452,17 @@ export default function MemoryGift({
                   </div>
                 )}
               </div>
-              <div className="memory-story-card">
-                <p>{activeMemory.text}</p>
-              </div>
+              <div className="memory-story-card"><p>{activeMemory.text}</p></div>
             </div>
             <div className="memory-pagination">
               <button
                 type="button"
-                onClick={() =>
-                  setMemoryIndex((index) => Math.max(0, index - 1))
-                }
+                onClick={() => setMemoryIndex((index) => Math.max(0, index - 1))}
                 disabled={memoryIndex === 0}
               >
                 上一段
               </button>
-              <span>
-                {memoryIndex + 1} / {card.memories.length}
-              </span>
+              <span>{memoryIndex + 1} / {card.memories.length}</span>
               {memoryIndex < card.memories.length - 1 ? (
                 <button
                   type="button"
@@ -285,15 +475,13 @@ export default function MemoryGift({
                   下一段
                 </button>
               ) : (
-                <button type="button" onClick={nextStage}>
-                  看看生活碎片
-                </button>
+                <button type="button" onClick={nextStage}>继续</button>
               )}
             </div>
           </section>
         ) : null}
 
-        {stage === 3 ? (
+        {stage === "fragments" ? (
           <section className="gift-stage fragment-stage">
             <p className="gift-kicker">ORDINARY BUT PRECIOUS</p>
             <h2>真正留下来的，常常是很小的事情。</h2>
@@ -308,21 +496,91 @@ export default function MemoryGift({
                 </article>
               ))}
             </div>
-            <button
-              type="button"
-              className="gift-primary-button"
-              onClick={nextStage}
-            >
-              打开那封信
+            <button type="button" className="gift-primary-button" onClick={nextStage}>
+              继续打开故事
             </button>
           </section>
         ) : null}
 
-        {stage === 4 ? (
-          <section className="gift-stage letter-stage">
-            <div className="letter-envelope" aria-hidden="true">
-              <span />
+        {stage === "collaboration" && card.collaborations?.length ? (
+          <section className="gift-stage collaboration-gift-stage">
+            <p className="gift-kicker">WORDS COLLECTED FOR YOU</p>
+            <h2>还有一些重要的人，也想把话留在这里。</h2>
+            <p className="gift-lead">这些内容通过秘密邀请共同完成，并由送礼人确认后进入礼物。</p>
+            <div className="gift-collaboration-grid">
+              {card.collaborations.map((item) => (
+                <article key={item.id}>
+                  <header><span>{item.anonymousToRecipient ? "匿" : item.displayName.slice(0, 1)}</span><div><strong>{item.anonymousToRecipient ? "匿名祝福" : item.displayName}</strong><small>共同准备这份礼物的人</small></div></header>
+                  <p>{item.message}</p>
+                  {item.media.length ? (
+                    <div className="gift-collaboration-media">
+                      {item.media.map((media, index) =>
+                        media.type === "image" && media.url ? (
+                          <img key={`${media.path}-${index}`} src={media.url} alt="共同祝福照片" />
+                        ) : media.type === "audio" && media.url ? (
+                          <audio key={`${media.path}-${index}`} src={media.url} controls preload="metadata" />
+                        ) : media.type === "video" && media.url ? (
+                          <video key={`${media.path}-${index}`} src={media.url} controls preload="metadata" playsInline />
+                        ) : null,
+                      )}
+                    </div>
+                  ) : null}
+                </article>
+              ))}
             </div>
+            <button type="button" className="gift-primary-button" onClick={nextStage}>
+              继续打开这份礼物
+            </button>
+          </section>
+        ) : null}
+
+        {stage === "quiz" && card.quiz ? (
+          <section className="gift-stage quiz-stage">
+            <p className="gift-kicker">A QUESTION ONLY FOR US</p>
+            <h2>{card.quiz.question}</h2>
+            <div className="quiz-options">
+              {card.quiz.options.map((option, index) => (
+                <button
+                  type="button"
+                  className={quizChoice === index ? "is-selected" : ""}
+                  key={`${option}-${index}`}
+                  onClick={() => {
+                    setQuizChoice(index);
+                    setQuizResult("idle");
+                  }}
+                >
+                  <span>{String.fromCharCode(65 + index)}</span>
+                  {option}
+                </button>
+              ))}
+            </div>
+            {quizResult !== "idle" ? (
+              <p className={`quiz-result is-${quizResult}`}>
+                {quizResult === "correct"
+                  ? card.quiz.successMessage
+                  : card.quiz.retryMessage}
+              </p>
+            ) : null}
+            {quizResult === "correct" ? (
+              <button type="button" className="gift-primary-button" onClick={nextStage}>
+                打开那封信
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="gift-primary-button"
+                onClick={submitQuiz}
+                disabled={quizChoice === null}
+              >
+                确认答案
+              </button>
+            )}
+          </section>
+        ) : null}
+
+        {stage === "letter" ? (
+          <section className="gift-stage letter-stage">
+            <div className="letter-envelope" aria-hidden="true"><span /></div>
             <article className="letter-paper">
               <p className="letter-salutation">写给 {card.recipientName}：</p>
               {card.letter.map((paragraph, index) => (
@@ -330,20 +588,23 @@ export default function MemoryGift({
               ))}
               <p className="letter-signature">—— {card.senderName}</p>
             </article>
-            <button
-              type="button"
-              className="gift-primary-button"
-              onClick={nextStage}
-            >
+            <button type="button" className="gift-primary-button" onClick={nextStage}>
               一起写到未来
             </button>
           </section>
         ) : null}
 
-        {stage === 5 ? (
+        {stage === "future" ? (
           <section className="gift-stage future-stage">
             <p className="gift-kicker">TO BE CONTINUED</p>
             <h2>故事写到这里，但并没有结束。</h2>
+            {daysTogether ? (
+              <div className="relationship-counter">
+                <small>从故事开始到今天</small>
+                <strong>{daysTogether}</strong>
+                <span>天</span>
+              </div>
+            ) : null}
             <p className="gift-lead">
               把未来想一起完成的事情留下来。以后每实现一件，就回来点亮一次。
             </p>
@@ -368,17 +629,44 @@ export default function MemoryGift({
                 </label>
               ))}
             </div>
-            <button
-              type="button"
-              className="gift-primary-button"
-              onClick={nextStage}
-            >
+            <button type="button" className="gift-primary-button" onClick={nextStage}>
+              {card.surprise?.enabled ? "打开最后的惊喜" : "留下你的回应"}
+            </button>
+          </section>
+        ) : null}
+
+        {stage === "surprise" && card.surprise ? (
+          <section className="gift-stage surprise-stage">
+            <div className="surprise-box" onAnimationStart={openSurprise}>
+              <span className="surprise-ribbon" aria-hidden="true" />
+              <p className="gift-kicker">ONE LAST SURPRISE</p>
+              <h2>{card.surprise.title}</h2>
+              <p>{card.surprise.message}</p>
+              {card.surprise.code ? (
+                <div className="surprise-code">
+                  <small>专属约定码</small>
+                  <strong>{card.surprise.code}</strong>
+                </div>
+              ) : null}
+              {card.surprise.buttonUrl ? (
+                <a
+                  className="gift-primary-button"
+                  href={card.surprise.buttonUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  onClick={openSurprise}
+                >
+                  {card.surprise.buttonLabel || "打开惊喜"}
+                </a>
+              ) : null}
+            </div>
+            <button type="button" className="gift-primary-button" onClick={nextStage}>
               留下你的回应
             </button>
           </section>
         ) : null}
 
-        {stage === 6 ? (
+        {stage === "reply" ? (
           <section className="gift-stage reply-stage">
             <p className="gift-kicker">A NEW PAGE</p>
             <h2>这一页，留给你来继续写。</h2>
@@ -386,10 +674,25 @@ export default function MemoryGift({
               <div className="reply-success">
                 <span>✓</span>
                 <h3>你的回应已经留在这段故事里。</h3>
-                <p>正式上线后，这段回应会仅对送礼人与收礼人可见。</p>
+                <p>送礼人会看到你的心情与文字，但不会公开展示。</p>
               </div>
             ) : (
               <div className="reply-card">
+                <fieldset className="mood-picker">
+                  <legend>打开这份礼物时，你的心情是？</legend>
+                  <div>
+                    {(Object.keys(replyMoodLabels) as ReplyMood[]).map((mood) => (
+                      <button
+                        key={mood}
+                        type="button"
+                        className={replyMood === mood ? "is-selected" : ""}
+                        onClick={() => setReplyMood(mood)}
+                      >
+                        {replyMoodLabels[mood]}
+                      </button>
+                    ))}
+                  </div>
+                </fieldset>
                 <label htmlFor={`reply-${embedded ? "embedded" : "full"}`}>
                   此刻最想对 {card.senderName} 说什么？
                 </label>
@@ -410,14 +713,33 @@ export default function MemoryGift({
                 </button>
               </div>
             )}
+            {!embedded &&
+            onCreateMemoryEntry &&
+            onUploadMemoryMedia &&
+            onClaimMemorySpace &&
+            onRequestInvitePermission &&
+            onCreateRecipientInvite ? (
+              <RecipientMemorySpace
+                slug={card.slug}
+                space={memorySpace}
+                loading={memorySpaceLoading}
+                onCreate={onCreateMemoryEntry}
+                onUpload={onUploadMemoryMedia}
+                onClaim={onClaimMemorySpace}
+                onRequestInvitePermission={onRequestInvitePermission}
+                onCreateRecipientInvite={onCreateRecipientInvite}
+              />
+            ) : null}
             <button
               type="button"
               className="text-button"
               onClick={() => {
-                setStage(0);
+                setStageIndex(0);
                 setMemoryIndex(0);
                 setAnswer("");
                 setReplySaved(false);
+                setQuizChoice(null);
+                setQuizResult("idle");
               }}
             >
               重新体验
@@ -426,16 +748,14 @@ export default function MemoryGift({
         ) : null}
       </main>
 
-      {stage > 0 ? (
+      {stageIndex > 0 ? (
         <footer className="gift-stage-footer">
-          <button type="button" onClick={previousStage}>
-            ← 上一步
-          </button>
+          <button type="button" onClick={previousStage}>← 上一步</button>
           <span>{stageLabels[stage]}</span>
           <button
             type="button"
             onClick={nextStage}
-            disabled={stage === stageLabels.length - 1}
+            disabled={stageIndex === stages.length - 1}
           >
             下一步 →
           </button>

@@ -42,7 +42,7 @@ export default async function AdminPage() {
 
   return (
     <main className="commerce-page admin-page">
-      <header className="landing-nav commerce-nav"><Link className="landing-brand" href="/"><span>拾</span><div><strong>拾光</strong><small>OPERATIONS</small></div></Link><nav><Link href="/admin/payments">付款审核</Link><Link href="/orders">用户订单页</Link><Link href="/cases">案例页</Link></nav></header>
+      <header className="landing-nav commerce-nav"><Link className="landing-brand" href="/"><span>拾</span><div><strong>拾光</strong><small>OPERATIONS</small></div></Link><nav><Link href="/admin/payments">付款审核</Link><Link href="/admin/reports">内容复核</Link><Link href="/orders">用户订单页</Link><Link href="/cases">案例页</Link></nav></header>
       <section className="commerce-hero compact admin-hero"><p className="landing-kicker">OPERATIONS DASHBOARD</p><h1>从成交到交付，一眼看清哪里需要处理。</h1><p>当前管理员：{String(claims.email)}</p></section>
       <section className="admin-metric-grid">
         <article><span>订单收入</span><strong>{formatCny(paidRevenue)}</strong><small>最近 100 笔订单</small></article>

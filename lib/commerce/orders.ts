@@ -1,4 +1,5 @@
 import type { PlanId } from "@/lib/commerce/plans";
+import type { InviteTierId, RetentionTierId } from "@/lib/collaboration/types";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { markReferralConverted } from "@/lib/growth/referrals";
 
@@ -29,6 +30,13 @@ export type OrderRow = {
   review_requested_at?: string | null;
   approved_at?: string | null;
   referred_by_code?: string | null;
+  order_kind?: "base" | "upgrade";
+  parent_order_id?: string | null;
+  invite_tier?: InviteTierId;
+  invite_limit?: number;
+  retention_tier?: RetentionTierId;
+  retention_expires_at?: string | null;
+  entitlement_snapshot?: Record<string, unknown>;
 };
 
 export async function createOrder(input: {
@@ -39,6 +47,13 @@ export async function createOrder(input: {
   name?: string;
   provider: PaymentProvider;
   metadata?: Record<string, unknown>;
+  orderKind?: "base" | "upgrade";
+  parentOrderId?: string | null;
+  inviteTier?: InviteTierId;
+  inviteLimit?: number;
+  retentionTier?: RetentionTierId;
+  retentionExpiresAt?: string | null;
+  entitlementSnapshot?: Record<string, unknown>;
 }) {
   const admin = createAdminClient();
   const { data, error } = await admin
@@ -53,6 +68,13 @@ export async function createOrder(input: {
       payment_provider: input.provider,
       status: "pending",
       metadata: input.metadata ?? {},
+      order_kind: input.orderKind ?? "base",
+      parent_order_id: input.parentOrderId ?? null,
+      invite_tier: input.inviteTier ?? "none",
+      invite_limit: input.inviteLimit ?? 0,
+      retention_tier: input.retentionTier ?? "days30",
+      retention_expires_at: input.retentionExpiresAt ?? null,
+      entitlement_snapshot: input.entitlementSnapshot ?? {},
     })
     .select("*")
     .single();

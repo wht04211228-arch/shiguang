@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { recordConversionEvent } from "@/lib/analytics/events";
 import { createOrder } from "@/lib/commerce/orders";
 import { getPlan } from "@/lib/commerce/plans";
+import { computeAddonTotal, computeRetentionExpiry, getInviteTier, getRetentionTier, type InviteTierId, type RetentionTierId } from "@/lib/collaboration/types";
 import { attributeOrderReferral, normalizeReferralCode } from "@/lib/growth/referrals";
 import { requireUserClaims } from "@/lib/supabase/auth";
 import { isSupabaseAdminConfigured } from "@/lib/supabase/config";
@@ -13,6 +14,8 @@ async function handleCheckout(request: Request) {
     acceptedTerms?: boolean;
     referralCode?: string;
     referralSessionId?: string;
+    inviteTier?: InviteTierId;
+    retentionTier?: RetentionTierId;
   };
 
   if (body.acceptedTerms !== true) {
@@ -21,10 +24,14 @@ async function handleCheckout(request: Request) {
 
   const plan = getPlan(body.planId);
   if (!plan) return NextResponse.json({ error: "套餐不存在" }, { status: 400 });
+  const invite = getInviteTier(body.inviteTier);
+  const retention = getRetentionTier(body.retentionTier);
+  const amount = plan.priceCents + computeAddonTotal(invite.id, retention.id);
+  const retentionExpiresAt = computeRetentionExpiry(retention.id);
 
   if (!isSupabaseAdminConfigured()) {
     return NextResponse.json({
-      url: `/order/demo?plan=${plan.id}&demo=1`,
+      url: `/order/demo?plan=${plan.id}&demo=1&invite=${invite.id}&retention=${retention.id}`,
       demo: true,
     });
   }
@@ -49,15 +56,24 @@ async function handleCheckout(request: Request) {
   const order = await createOrder({
     ownerId: claims.sub,
     planId: plan.id,
-    amount: plan.priceCents,
+    amount,
     email,
     name: body.customerName,
     provider: "manual",
+    inviteTier: invite.id,
+    inviteLimit: invite.limit,
+    retentionTier: retention.id,
+    retentionExpiresAt,
+    entitlementSnapshot: { invite, retention, planLimits: plan.limits },
     metadata: {
       termsAcceptedAt: new Date().toISOString(),
       termsVersion: "2026-07-14-manual-payment",
       referralCode: referralCode || null,
       paymentFlow: "manual_review",
+      inviteTier: invite.id,
+      inviteLimit: invite.limit,
+      retentionTier: retention.id,
+      retentionExpiresAt,
     },
   });
 
@@ -80,6 +96,9 @@ async function handleCheckout(request: Request) {
       planId: plan.id,
       provider: "manual",
       referralCode: referralCode || null,
+      inviteTier: invite.id,
+      retentionTier: retention.id,
+      amount,
     },
   });
 

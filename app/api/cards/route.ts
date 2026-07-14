@@ -41,7 +41,7 @@ export async function POST(request: Request) {
       status?: string;
       orderId?: string;
     };
-    const card = parseCardData(body.card);
+    let card = parseCardData(body.card);
     const status = body.status === "draft" ? "draft" : "published";
 
     const { data: existing, error: selectError } = await supabase
@@ -51,6 +51,7 @@ export async function POST(request: Request) {
       .maybeSingle();
     if (selectError) throw selectError;
 
+    let entitlementOrder: { id: string; status: string; plan_id: string; retention_expires_at?: string | null } | null = null;
     let orderId =
       typeof body.orderId === "string" && body.orderId
         ? body.orderId
@@ -58,7 +59,7 @@ export async function POST(request: Request) {
     if (orderId) {
       const { data: order, error: orderError } = await supabase
         .from("orders")
-        .select("id, status, plan_id")
+        .select("id, status, plan_id, retention_expires_at")
         .eq("id", orderId)
         .maybeSingle();
       if (orderError) throw orderError;
@@ -71,6 +72,7 @@ export async function POST(request: Request) {
           { status: 403 },
         );
       }
+      entitlementOrder = order;
       const plan = getPlan(order.plan_id);
       if (!plan) {
         return NextResponse.json(
@@ -103,7 +105,41 @@ export async function POST(request: Request) {
       );
     }
 
-    const baseRow = cardToRow(card, claims.sub, status, orderId);
+    if (orderId) {
+      const admin = createAdminClient();
+      const { data: space } = await admin
+        .from("collaboration_spaces")
+        .select("id")
+        .eq("order_id", orderId)
+        .maybeSingle();
+      if (space) {
+        const { data: contributions, error: contributionError } = await admin
+          .from("collaboration_contributions")
+          .select("id,display_name,anonymous_to_recipient,message,media,sort_order")
+          .eq("space_id", space.id)
+          .eq("status", "approved")
+          .order("sort_order", { ascending: true });
+        if (contributionError) throw contributionError;
+        card = {
+          ...card,
+          collaborations: (contributions ?? []).map((item) => ({
+            id: item.id,
+            displayName: item.anonymous_to_recipient ? "匿名祝福" : item.display_name,
+            anonymousToRecipient: item.anonymous_to_recipient,
+            message: item.message,
+            media: Array.isArray(item.media) ? item.media : [],
+          })),
+        };
+      }
+    }
+
+    const baseRow = {
+      ...cardToRow(card, claims.sub, status, orderId),
+      ...(entitlementOrder?.retention_expires_at
+        ? { retention_expires_at: entitlementOrder.retention_expires_at }
+        : {}),
+      primary_manager_id: claims.sub,
+    };
     const answerHash = card.unlockAnswer
       ? hashAnswer(card.unlockAnswer)
       : ((existing?.unlock_answer_hash as string | null | undefined) ?? null);
@@ -132,6 +168,10 @@ export async function POST(request: Request) {
 
     if (orderId) {
       const admin = createAdminClient();
+      await admin
+        .from("collaboration_spaces")
+        .update({ card_id: data.id })
+        .eq("order_id", orderId);
       await admin
         .from("orders")
         .update(

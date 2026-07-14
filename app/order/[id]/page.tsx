@@ -3,8 +3,10 @@ import { notFound, redirect } from "next/navigation";
 import RefundRequestForm from "@/components/RefundRequestForm";
 import DraftReviewForm from "@/components/DraftReviewForm";
 import FeedbackForm from "@/components/FeedbackForm";
+import EntitlementUpgradePanel from "@/components/EntitlementUpgradePanel";
 import { manualPaymentStatusName } from "@/lib/commerce/manual-payments";
 import { formatCny, getPlan } from "@/lib/commerce/plans";
+import { getInviteTier, getRetentionTier, type InviteTierId, type RetentionTierId } from "@/lib/collaboration/types";
 import { getOrderForOwner } from "@/lib/commerce/orders";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseAdminConfigured } from "@/lib/supabase/config";
@@ -95,6 +97,11 @@ export default async function OrderPage({
   const revisionCount = Number((order as { revision_count?: number }).revision_count || 0);
   const reviewStatus = (order as { review_status?: string }).review_status || "not_ready";
   const paymentReviewStatus = manualProof?.review_status || (order as { payment_review_status?: string }).payment_review_status || "not_submitted";
+  const inviteTier = ((order as { invite_tier?: string }).invite_tier || "none") as InviteTierId;
+  const retentionTier = ((order as { retention_tier?: string }).retention_tier || "days30") as RetentionTierId;
+  const inviteEntitlement = getInviteTier(inviteTier);
+  const retentionEntitlement = getRetentionTier(retentionTier);
+  const orderKind = (order as { order_kind?: string }).order_kind || "base";
 
   return (
     <main className="commerce-page order-detail-page">
@@ -110,7 +117,7 @@ export default async function OrderPage({
         <div className="order-detail-heading">
           <div>
             <p className="landing-kicker">ORDER {order.id.slice(0, 8).toUpperCase()}</p>
-            <h1>{plan.name}</h1>
+            <h1>{orderKind === "upgrade" ? "权益升级订单" : plan.name}</h1>
             <p>{plan.tagline}</p>
           </div>
           <div>
@@ -158,8 +165,10 @@ export default async function OrderPage({
 
         <section className="order-entitlements">
           <h2>当前权益</h2>
-          <ul>{plan.features.map((feature) => <li key={feature}>{feature}</li>)}</ul>
+          <ul>{plan.features.map((feature) => <li key={feature}>{feature}</li>)}<li>多人共创：{inviteEntitlement.label}</li><li>保存期限：{retentionEntitlement.label}</li></ul>
         </section>
+
+        {isPaid && orderKind === "base" ? <EntitlementUpgradePanel orderId={order.id} currentInviteTier={inviteTier} currentRetentionTier={retentionTier} /> : null}
 
         <div className="order-actions">
           {!isPaid ? <Link className="button-primary" href={`/pay/manual/${order.id}`}>完成人工付款</Link> : card ? <Link className="button-primary" href={`/card/${card.slug}`}>打开已绑定礼物</Link> : <Link className="button-primary" href={`/studio?order=${order.id}`}>进入制作台</Link>}

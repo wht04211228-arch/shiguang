@@ -1,44 +1,104 @@
-# 拾光 v0.7｜人工付款审核版
+# 拾光 v0.9｜多人秘密共创纪念空间
 
-这是面向没有微信支付／支付宝商户号的早期售卖版本。项目不再创建 Stripe 收银台，而是使用“创建订单 → 人工付款 → 上传凭证 → 管理员核对真实到账 → 开通制作权限”的流程。
+拾光是一套可部署的私人数字纪念礼物平台。v0.9 在人工付款、订单、问卷、DeepSeek 文案、沉浸式礼物和体验数据基础上，加入完全自助制作、多人秘密共创、分层邀请收费、保存期限权益、收件人二次参与、共同管理与全新引导式视觉工作台。
 
-## 核心流程
+## v0.9 核心能力
+
+### 更清楚的用户路径
+
+- 首页同时提供“体验样片”和“直接开始制作”
+- 登录后进入“下一步操作中心”
+- 首次制作按 10 步旅程引导，后续可以自由跳转
+- 桌面端三栏工作台：礼物旅程、当前任务、手机实时预览
+- 手机端使用单任务编辑和全屏预览
+- 制作完成度、情感丰富度和情绪节奏建议
+- 发布前检查清单明确区分必须项和建议项
+
+### 多人秘密共创
+
+- 公共群聊邀请和个人专属邀请同时支持
+- 默认秘密模式，也可开启通过后的共创留言墙
+- 参与者可免注册投稿，也可绑定账号长期管理
+- 每位参与者可提交文字、最多 3 张照片、1 段语音和套餐允许的视频
+- 允许对收件人匿名，但购买者始终可以看到真实投稿身份
+- 购买者可以确认、排序、隐藏、删除和退回修改，但不能改写原文
+- 截止后默认禁止新增投稿，已投稿者在发布前仍可修改
+- 支持单独延长专属邀请期限、撤销链接和锁定投稿版本
+- 发布后撤回会根据收件人是否已经打开分级处理
+
+### 权益与补差价
+
+邀请人数：
+
+- 3 人：+¥9.9
+- 10 人：+¥19.9
+- 30 人：+¥39.9
+- 最多 100 人：+¥69.9
+
+保存期限：
+
+- 30 天：套餐默认
+- 1 年：+¥9.9
+- 3 年：+¥19.9
+- 长期纪念：+¥49.9
+
+邀请人数和保存期限只允许补差价向上升级，不支持降级退款。长期纪念指产品持续运营期间长期保存，并提供数据导出能力。
+
+### 收件人共同纪念空间
+
+- 收件人可以继续添加新回忆、未来进度、照片和声音
+- 收件人可以绑定账号，进入双方共同管理阶段
+- 收件人可以申请继续邀请新成员
+- 购买者批准后，收件人可在剩余人数额度内生成邀请链接
+- 收件人新增内容由收件人控制；购买者可隐藏但不能修改原文
+- 重大操作采用双方确认、分级等待与申诉机制
+- 控制权转移等待 14 天，永久删除等待 30 天
+- 隐私、安全和侵权风险可立即临时隐藏并进入复核
+
+### 安全与内容治理
+
+- 文字通过本地规则和可选 DeepSeek 审核
+- 文件校验格式、大小、数量和视频时长
+- 图片和视频不会被虚假宣称为已自动完成视觉安全审核
+- 购买者需在发布前最终确认共创内容
+- 提供收件人举报入口和管理员内容复核队列
+- 私有素材通过短时签名地址访问
+- 解锁答案使用加盐哈希保存
+
+## 技术栈
+
+- Next.js 16 / React 19 / TypeScript
+- Supabase Auth / PostgreSQL / 私有 Storage
+- DeepSeek 文案与文字安全辅助（可选）
+- Resend 邮件通知（可选）
+- Vercel 部署
+- 人工微信/支付宝付款凭证审核
+
+## 从 v0.8 升级
+
+先在 Supabase SQL Editor 执行：
 
 ```text
-选择套餐
-→ 登录并创建待付款订单
-→ 查看微信／支付宝人工付款说明
-→ 上传付款截图和完整交易单号
-→ 管理员在真实收款记录中核对
-→ 通过后订单变为已支付
-→ 开放需求问卷、素材上传、DeepSeek 文案和制作台
-→ 初稿确认、交付、评价与推荐
+supabase/migrations/009_collaboration_memory_space.sql
 ```
 
-付款截图不会自动判定订单已支付。管理员必须核对真实到账金额、时间和交易单号。
+然后更新源代码：
 
-## v0.7 新增
+```bash
+npm install
+npm run check
+git add -A
+git commit -m "Upgrade to v0.9 collaboration memory space"
+git push origin main
+```
 
-- `/pay/manual/[id]` 人工付款说明与凭证提交页
-- `/order/[id]/payment-proof` 兼容跳转地址
-- `/admin/payments` 付款凭证审核队列
-- 私有 `payment-proofs` Storage Bucket
-- 完整交易单号重复校验
-- 管理员通过／驳回与邮件通知
-- 付款审核原子数据库函数，避免订单与凭证状态不一致
-- 未确认到账时禁止问卷、素材上传、AI额度、发布和制作台订单入口
-- 管理员不能绕过付款审核直接把人工付款订单改为已支付
-- 删除 Stripe 运行依赖和 Webhook 路由
+新建 Supabase 项目时直接执行：
 
-## 运行环境
+```text
+supabase/schema.sql
+```
 
-- Next.js 16
-- React 19
-- TypeScript
-- Supabase Auth / PostgreSQL / Storage
-- DeepSeek 文案辅助
-- Resend 通知
-- Vercel 部署
+完整升级步骤见 [COLLABORATION_SETUP.md](./COLLABORATION_SETUP.md)。
 
 ## 本地启动
 
@@ -51,26 +111,31 @@ npm run dev
 
 ```text
 http://localhost:3000
+http://localhost:3000/dashboard
+http://localhost:3000/studio
+http://localhost:3000/card/sample
 http://localhost:3000/pricing
-http://localhost:3000/order/demo?plan=deep
 ```
 
-未配置 Supabase 时使用本地演示模式，不会真实创建订单或上传付款凭证。
-
-## 从 v0.6.2 升级
-
-在 Supabase SQL Editor 执行：
+样片解锁答案：
 
 ```text
-supabase/migrations/007_manual_payment_review.sql
+5月
 ```
 
-然后将 v0.7 代码推送到 GitHub，并在 Vercel 重新部署。
-
-新建 Supabase 项目时可以直接执行：
+## 主要页面
 
 ```text
-supabase/schema.sql
+/                         品牌首页
+/dashboard                下一步操作中心
+/pricing                  套餐与增值权益
+/studio                   引导式自助制作台
+/collaborate/[token]      参与者秘密投稿页
+/card/[slug]              收件人礼物和共同纪念空间
+/order/[id]               订单、付款、权益升级
+/admin                    运营后台
+/admin/payments           人工付款审核
+/admin/reports            隐私与内容复核
 ```
 
 ## 必需环境变量
@@ -81,68 +146,37 @@ NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_xxx
 SUPABASE_SECRET_KEY=sb_secret_xxx
 CARD_ACCESS_SECRET=长随机字符串
 NEXT_PUBLIC_SITE_URL=https://你的正式域名
-ADMIN_EMAILS=你的管理员登录邮箱
-OPERATIONS_NOTIFICATION_EMAIL=接收付款审核提醒的邮箱
+ADMIN_EMAILS=管理员邮箱
+OPERATIONS_NOTIFICATION_EMAIL=运营通知邮箱
 CRON_SECRET=长随机字符串
+ALLOW_UNPAID_PUBLISH=false
 ```
 
-### 人工付款配置
-
-推荐在 Supabase Storage 的私有 `merchant-assets` Bucket 中上传：
-
-```text
-wechat.png
-alipay.png
-```
-
-然后在 Vercel 添加：
+人工付款：
 
 ```env
 MANUAL_WECHAT_QR_PATH=wechat.png
 MANUAL_ALIPAY_QR_PATH=alipay.png
-CUSTOMER_SERVICE_CONTACT=微信：你的客服号
-MANUAL_PAYMENT_INSTRUCTIONS=付款时请备注订单号后8位\n付款后上传清晰截图并填写完整交易单号\n管理员核对真实到账后开通制作权限
+CUSTOMER_SERVICE_CONTACT=你的客服联系方式
+MANUAL_PAYMENT_INSTRUCTIONS=你的付款说明
 ```
 
-服务器会为订单所有者生成 15 分钟短时二维码地址。也支持 `MANUAL_WECHAT_QR_URL` 和 `MANUAL_ALIPAY_QR_URL` 作为公开 HTTPS 图片后备方案。
-
-### 可选服务
+可选服务：
 
 ```env
-DEEPSEEK_API_KEY=你的 DeepSeek API Key
-DEEPSEEK_MODEL=你的可用模型名
+DEEPSEEK_API_KEY=你的密钥
+DEEPSEEK_MODEL=你当前账号可用的模型名
 DEEPSEEK_BASE_URL=https://api.deepseek.com
 RESEND_API_KEY=re_xxx
 NOTIFICATION_FROM_EMAIL=拾光 <notifications@你的域名>
 ```
 
-## 管理员审核步骤
-
-1. 登录 `ADMIN_EMAILS` 中配置的账号。
-2. 打开 `/admin/payments`。
-3. 进入待审核订单。
-4. 在真实微信或支付宝账单中查找交易。
-5. 核对金额、付款时间和完整交易单号。
-6. 确认无误后点击“确认真实到账”。
-7. 系统原子更新付款凭证和订单，并开放制作权限。
-
-不得仅凭截图确认到账。
-
-## 安全设计
-
-- 付款截图存放在私有 Bucket 中。
-- 用户只能查看自己的审核状态，不能直接写数据库。
-- 管理员预览使用 30 分钟短时签名地址。
-- 同一交易单号只能对应一笔订单。
-- 付款确认通过数据库函数原子完成。
-- 人工付款订单未审核通过时，后台普通状态编辑不能绕过付款闸门。
-- Secret Key、二维码原图和敏感环境变量不得提交到公开仓库。
-
 ## 完整检查
 
 ```bash
-npm run check
+npm run typecheck
+npm run build
 npm audit --omit=dev
 ```
 
-详细上线步骤见 [MANUAL_PAYMENT_SETUP.md](./MANUAL_PAYMENT_SETUP.md)。
+正式上线前按 [DEPLOYMENT_CHECKLIST.md](./DEPLOYMENT_CHECKLIST.md) 完成双账号、跨设备、权限和付款验收。
