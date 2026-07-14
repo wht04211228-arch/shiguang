@@ -98,6 +98,7 @@ export default function GiftStudio({
   const [hasStoredAnswer, setHasStoredAnswer] = useState(false);
   const [replyViewerOpen, setReplyViewerOpen] = useState(false);
   const [deliveryOpen, setDeliveryOpen] = useState(false);
+  const [deliveryJustPublished, setDeliveryJustPublished] = useState(false);
   const [insightsOpen, setInsightsOpen] = useState(false);
   const [insights, setInsights] = useState<CardInsights | null>(null);
   const [mobilePreviewOpen, setMobilePreviewOpen] = useState(false);
@@ -174,6 +175,11 @@ export default function GiftStudio({
     () => `/card/${normalizeSlug(card.slug)}`,
     [card.slug],
   );
+  const currentCloudSummary = useMemo(
+    () => cloudCards.find((item) => item.slug === normalizeSlug(card.slug)),
+    [card.slug, cloudCards],
+  );
+  const isCurrentPublished = currentCloudSummary?.status === "published";
   const readiness = useMemo(() => calculateReadiness(card), [card]);
   const emotionalRichness = useMemo(() => calculateEmotionalRichness(card), [card]);
   const pacingSuggestions = useMemo(() => getPacingSuggestions(card), [card]);
@@ -220,7 +226,12 @@ export default function GiftStudio({
       setStatus(body.error || "保存失败");
       return;
     }
-    setStatus(publish ? "已发布，可跨设备打开" : "云端草稿已保存");
+    setStatus(publish ? "发布成功：请在交付中心复制专属链接和发送话术" : "云端草稿已保存");
+    if (publish) {
+      setDeliveryJustPublished(true);
+      setDeliveryOpen(true);
+      setActiveJourneyStep("publish");
+    }
     setHasStoredAnswer(hasStoredAnswer || Boolean(normalized.unlockAnswer));
     if (normalized.unlockAnswer)
       setCard((current) => ({ ...current, unlockAnswer: "" }));
@@ -440,9 +451,14 @@ export default function GiftStudio({
           <button
             type="button"
             className="button-secondary"
-            onClick={() => setDeliveryOpen(true)}
+            disabled={!isCurrentPublished && !deliveryJustPublished}
+            title={!isCurrentPublished && !deliveryJustPublished ? "正式发布后即可获取专属链接和发送话术" : "打开交付中心"}
+            onClick={() => {
+              setDeliveryJustPublished(false);
+              setDeliveryOpen(true);
+            }}
           >
-            交付二维码
+            专属链接 / 交付
           </button>
           {cloudMode ? (
             <button
@@ -520,7 +536,14 @@ export default function GiftStudio({
         <DeliveryPanel
           slug={normalizeSlug(card.slug)}
           recipientName={card.recipientName}
-          onClose={() => setDeliveryOpen(false)}
+          senderName={card.senderName}
+          orderId={activeOrderId}
+          inviteLimit={planInfo?.inviteLimit ?? 0}
+          justPublished={deliveryJustPublished}
+          onClose={() => {
+            setDeliveryOpen(false);
+            setDeliveryJustPublished(false);
+          }}
         />
       ) : null}
 
@@ -593,6 +616,30 @@ export default function GiftStudio({
               暂时还没有回复。礼物成功解锁后，收件人可以在最后一页留下内容。
             </p>
           )}
+        </section>
+      ) : null}
+
+      {cloudMode && isCurrentPublished ? (
+        <section className="published-share-reminder" aria-live="polite">
+          <div className="published-share-icon" aria-hidden="true">✓</div>
+          <div>
+            <small>这份礼物已经发布</small>
+            <strong>下一步：把正确的链接发给正确的人</strong>
+            <p>礼物链接发给收件人；秘密共创链接发给朋友或家人。交付中心已经准备好链接、二维码和可直接复制的话术。</p>
+          </div>
+          <div className="published-share-actions">
+            <a className="button-secondary" href={publicPath} target="_blank" rel="noreferrer">先测试礼物 ↗</a>
+            <button
+              type="button"
+              className="button-primary"
+              onClick={() => {
+                setDeliveryJustPublished(false);
+                setDeliveryOpen(true);
+              }}
+            >
+              打开交付中心
+            </button>
+          </div>
         </section>
       ) : null}
 
