@@ -89,7 +89,7 @@ export default function BriefForm({
       if (!response.ok) throw new Error(body.error || "保存失败");
       if (submit) {
         void trackConversionEvent("brief_submitted", { orderId });
-        router.push(`/order/${orderId}?brief=submitted`);
+        router.push(`/studio?order=${encodeURIComponent(orderId)}&brief=imported`);
         router.refresh();
       } else {
         setMessage("草稿已保存，你可以稍后继续填写");

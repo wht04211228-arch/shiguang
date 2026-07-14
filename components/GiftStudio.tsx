@@ -8,6 +8,11 @@ import BrandLogo from "@/components/brand/BrandLogo";
 import CollaborationManager from "@/components/collaboration/CollaborationManager";
 import { calculateEmotionalRichness, calculateReadiness, getPacingSuggestions } from "@/lib/studio/readiness";
 import {
+  getBriefToneLabel,
+  mergeBriefIntoCard,
+  type StudioBriefContext,
+} from "@/lib/studio/brief-import";
+import {
   cloneSampleCard,
   normalizeSlug,
   replyMoodLabels,
@@ -41,6 +46,10 @@ type GiftStudioProps = {
   userEmail?: string;
   orderId?: string;
   initialStep?: string;
+  initialCard?: CardData;
+  initialHasStoredAnswer?: boolean;
+  briefContext?: StudioBriefContext;
+  briefJustImported?: boolean;
 };
 
 type StudioPanel =
@@ -84,8 +93,16 @@ export default function GiftStudio({
   userEmail,
   orderId,
   initialStep,
+  initialCard,
+  initialHasStoredAnswer = false,
+  briefContext,
+  briefJustImported = false,
 }: GiftStudioProps) {
-  const [card, setCard] = useState<CardData>(() => cloneSampleCard());
+  const localDraftKey = useMemo(
+    () => (orderId ? `${draftKey}-${orderId}` : draftKey),
+    [orderId],
+  );
+  const [card, setCard] = useState<CardData>(() => initialCard ?? cloneSampleCard());
   const [status, setStatus] = useState(
     cloudMode ? "云端已连接" : "本地演示模式",
   );
@@ -95,13 +112,15 @@ export default function GiftStudio({
   const activePanel = journeySteps[activeJourneyIndex]?.panel ?? "basic";
   const [cloudCards, setCloudCards] = useState<CardSummary[]>([]);
   const [busy, setBusy] = useState(false);
-  const [hasStoredAnswer, setHasStoredAnswer] = useState(false);
+  const [hasStoredAnswer, setHasStoredAnswer] = useState(initialHasStoredAnswer);
   const [replyViewerOpen, setReplyViewerOpen] = useState(false);
   const [deliveryOpen, setDeliveryOpen] = useState(false);
   const [deliveryJustPublished, setDeliveryJustPublished] = useState(false);
   const [insightsOpen, setInsightsOpen] = useState(false);
   const [insights, setInsights] = useState<CardInsights | null>(null);
   const [mobilePreviewOpen, setMobilePreviewOpen] = useState(false);
+  const [progressOpen, setProgressOpen] = useState(false);
+  const [briefDetailsOpen, setBriefDetailsOpen] = useState(briefJustImported);
   const [activeOrderId, setActiveOrderId] = useState<string | undefined>(
     orderId,
   );
@@ -156,20 +175,38 @@ export default function GiftStudio({
   }, [cloudMode, activeOrderId]);
 
   useEffect(() => {
-    const saved = window.localStorage.getItem(draftKey);
+    const saved = window.localStorage.getItem(localDraftKey);
     if (saved) {
       try {
-        setCard(JSON.parse(saved) as CardData);
+        const savedCard = JSON.parse(saved) as CardData;
+        const nextCard = briefJustImported && briefContext
+          ? mergeBriefIntoCard(savedCard, briefContext)
+          : savedCard;
+        setCard(nextCard);
+        window.localStorage.setItem(localDraftKey, JSON.stringify(nextCard));
         setStatus(
-          cloudMode ? "已恢复本机草稿，可发布到云端" : "已恢复本机草稿",
+          briefJustImported && briefContext
+            ? "制作需求已同步到现有草稿，原有照片和手动内容已保留"
+            : cloudMode
+              ? "已恢复这份订单的本机草稿，可继续发布到云端"
+              : "已恢复本机草稿",
         );
       } catch {
-        setStatus("草稿读取失败，已载入示例内容");
+        setCard(initialCard ?? cloneSampleCard());
+        setStatus("草稿读取失败，已重新载入订单内容");
       }
+    } else if (initialCard) {
+      setCard(initialCard);
+      window.localStorage.setItem(localDraftKey, JSON.stringify(initialCard));
+      setStatus(
+        briefJustImported
+          ? "制作需求已自动导入，接下来只需补充日期、照片和解锁方式"
+          : "已载入这份订单的云端礼物",
+      );
     }
     void refreshCards();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cloudMode]);
+  }, [cloudMode, localDraftKey]);
 
   const publicPath = useMemo(
     () => `/card/${normalizeSlug(card.slug)}`,
@@ -192,8 +229,20 @@ export default function GiftStudio({
     setStatus("有未保存修改");
   };
 
+  const syncBriefToStudio = () => {
+    if (!briefContext) return;
+    setCard((current) => {
+      const next = mergeBriefIntoCard(current, briefContext);
+      window.localStorage.setItem(localDraftKey, JSON.stringify(next));
+      return next;
+    });
+    setActiveJourneyStep("purpose");
+    setBriefDetailsOpen(true);
+    setStatus("已重新同步制作需求：人物、场景、主题、回忆和信件重点已更新");
+  };
+
   const persistLocal = (next: CardData) => {
-    window.localStorage.setItem(draftKey, JSON.stringify(next));
+    window.localStorage.setItem(localDraftKey, JSON.stringify(next));
     window.localStorage.setItem(
       `shiguang-card-${next.slug}`,
       JSON.stringify(next),
@@ -307,11 +356,11 @@ export default function GiftStudio({
   };
 
   const resetDraft = () => {
-    const next = cloneSampleCard();
+    const next = initialCard ?? cloneSampleCard();
     setCard(next);
-    setHasStoredAnswer(false);
-    window.localStorage.removeItem(draftKey);
-    setStatus("已恢复示例内容");
+    setHasStoredAnswer(initialHasStoredAnswer);
+    window.localStorage.removeItem(localDraftKey);
+    setStatus(initialCard ? "已恢复订单与制作需求的初始内容" : "已恢复示例内容");
   };
 
   const exportJson = () => {
@@ -643,18 +692,6 @@ export default function GiftStudio({
         </section>
       ) : null}
 
-      <section className="studio-guidance-strip">
-        <div className="studio-score-group">
-          <article><span>制作完成度</span><strong>{readiness.score}%</strong><div><i style={{ width: `${readiness.score}%` }} /></div></article>
-          <article><span>情感丰富度</span><strong>{emotionalRichness}%</strong><div><i style={{ width: `${emotionalRichness}%` }} /></div></article>
-        </div>
-        <div className="studio-next-action">
-          <small>当前步骤 · {activeJourneyIndex + 1}/{journeySteps.length}</small>
-          <strong>{activeJourney.label}</strong>
-          <p>{activeJourney.hint}。下一项关键任务：{readiness.nextAction}</p>
-        </div>
-      </section>
-
       <div className={`studio-layout ${cloudMode ? "has-cloud-strip" : ""}`}>
         <aside className="studio-journey" aria-label="礼物制作步骤">
           <div className="studio-journey-heading"><span>礼物旅程</span><strong>{activeJourneyIndex + 1}/{journeySteps.length}</strong></div>
@@ -677,6 +714,75 @@ export default function GiftStudio({
           <div className="studio-journey-help"><strong>不知道该写什么？</strong><p>先写真实事实，再使用 AI 帮你整理，不要让文案替代真实经历。</p></div>
         </aside>
         <aside className="editor-panel">
+          <div className="studio-compact-progress">
+            <button
+              type="button"
+              className="studio-progress-main"
+              aria-expanded={progressOpen}
+              onClick={() => setProgressOpen((current) => !current)}
+            >
+              <span className="studio-progress-ring" aria-hidden="true">
+                <svg viewBox="0 0 36 36">
+                  <path className="ring-track" d="M18 2.0845a15.9155 15.9155 0 0 1 0 31.831a15.9155 15.9155 0 0 1 0-31.831" />
+                  <path className="ring-value" strokeDasharray={`${readiness.score}, 100`} d="M18 2.0845a15.9155 15.9155 0 0 1 0 31.831a15.9155 15.9155 0 0 1 0-31.831" />
+                </svg>
+                <strong>{readiness.score}</strong>
+              </span>
+              <span className="studio-progress-copy">
+                <small>第 {activeJourneyIndex + 1}/{journeySteps.length} 步</small>
+                <strong>{activeJourney.label}</strong>
+                <em>{activeJourney.hint}</em>
+              </span>
+            </button>
+            <div className="studio-progress-actions">
+              <span>情感丰富度 {emotionalRichness}%</span>
+              <button type="button" onClick={() => setProgressOpen((current) => !current)}>
+                {progressOpen ? "收起" : "查看进度"}
+              </button>
+            </div>
+            {progressOpen ? (
+              <div className="studio-progress-popover">
+                <header><div><small>下一项关键任务</small><strong>{readiness.nextAction}</strong></div><button type="button" onClick={() => setProgressOpen(false)}>×</button></header>
+                <p>{readiness.reason}</p>
+                <div className="studio-progress-detail">
+                  <label><span>制作完成度</span><strong>{readiness.score}%</strong><i><b style={{ width: `${readiness.score}%` }} /></i></label>
+                  <label><span>情感丰富度</span><strong>{emotionalRichness}%</strong><i><b style={{ width: `${emotionalRichness}%` }} /></i></label>
+                </div>
+                <button type="button" className="button-secondary" onClick={() => { setActiveJourneyStep("publish"); setProgressOpen(false); }}>查看发布检查</button>
+              </div>
+            ) : null}
+          </div>
+
+          {briefContext ? (
+            <section className={`brief-import-notice ${briefJustImported ? "just-imported" : ""}`}>
+              <div className="brief-import-heading">
+                <span aria-hidden="true">✓</span>
+                <div>
+                  <small>{briefJustImported ? "制作需求已自动导入" : "已连接制作需求问卷"}</small>
+                  <strong>{briefContext.recipientName} · {briefContext.occasion}</strong>
+                  <p>已带入收件人、使用场景、视觉主题、{briefContext.storyFacts.length} 条真实回忆和信件重点，无需重复填写。</p>
+                </div>
+              </div>
+              <div className="brief-import-actions">
+                <button type="button" onClick={() => setBriefDetailsOpen((current) => !current)}>{briefDetailsOpen ? "收起需求" : "查看需求"}</button>
+                <button type="button" onClick={syncBriefToStudio}>重新同步问卷</button>
+              </div>
+              {briefDetailsOpen ? (
+                <div className="brief-import-details">
+                  <dl>
+                    <div><dt>双方关系</dt><dd>{briefContext.relationship}</dd></div>
+                    <div><dt>文案语气</dt><dd>{getBriefToneLabel(briefContext.tone)}</dd></div>
+                    <div><dt>希望交付</dt><dd>{briefContext.deliveryDate || "未设置"}</dd></div>
+                    <div><dt>联系方式</dt><dd>{briefContext.contactMethod || "未填写"}</dd></div>
+                  </dl>
+                  {briefContext.mustInclude ? <article><strong>一定要出现</strong><p>{briefContext.mustInclude}</p></article> : null}
+                  {briefContext.avoidContent ? <article className="private-warning"><strong>避免出现（仅制作人可见）</strong><p>{briefContext.avoidContent}</p></article> : null}
+                  {briefContext.specialRequests ? <article><strong>其他要求</strong><p>{briefContext.specialRequests}</p></article> : null}
+                </div>
+              ) : null}
+            </section>
+          ) : null}
+
           <div className="editor-scroll-area">
             {activePanel === "theme" ? (
               <section className="editor-section">
