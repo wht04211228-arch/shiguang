@@ -23,7 +23,7 @@ export const giftPlans: GiftPlan[] = [
     id: "light",
     name: "轻定制",
     tagline: "快速完成一份有仪式感的专属礼物",
-    priceCents: 2900,
+    priceCents: 520,
     features: [
       "C · 温暖胶片主线主题",
       "最多 8 段回忆",
@@ -38,8 +38,7 @@ export const giftPlans: GiftPlan[] = [
     id: "deep",
     name: "深度定制",
     tagline: "适合生日、纪念日和重要关系表达",
-    priceCents: 9900,
-    compareAtCents: 12900,
+    priceCents: 1314,
     badge: "主推",
     features: [
       "A/B/C 三主题切换",
@@ -55,7 +54,7 @@ export const giftPlans: GiftPlan[] = [
     id: "private",
     name: "私人策划",
     tagline: "一对一梳理故事，完成独一无二的数字礼物",
-    priceCents: 29900,
+    priceCents: 2990,
     features: [
       "专属故事结构设计",
       "最多 60 段回忆",
