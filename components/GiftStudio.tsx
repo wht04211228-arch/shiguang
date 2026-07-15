@@ -8,6 +8,13 @@ import BrandLogo from "@/components/brand/BrandLogo";
 import CollaborationManager from "@/components/collaboration/CollaborationManager";
 import { calculateEmotionalRichness, calculateReadiness, getPacingSuggestions } from "@/lib/studio/readiness";
 import {
+  buildDynamicJourney,
+  studioFeatures,
+  type JourneyAction,
+  type StudioFeatureKey,
+} from "@/lib/studio/dynamic-journey";
+import type { CollaborationSpaceSummary } from "@/lib/collaboration/types";
+import {
   getBriefToneLabel,
   mergeBriefIntoCard,
   type StudioBriefContext,
@@ -52,42 +59,6 @@ type GiftStudioProps = {
   briefJustImported?: boolean;
 };
 
-type StudioPanel =
-  | "basic"
-  | "theme"
-  | "memories"
-  | "letter"
-  | "collaboration"
-  | "media"
-  | "future"
-  | "experience"
-  | "publish";
-
-type JourneyKey =
-  | "purpose"
-  | "theme"
-  | "cover"
-  | "memories"
-  | "letter"
-  | "collaboration"
-  | "media"
-  | "surprise"
-  | "timing"
-  | "publish";
-
-const journeySteps: Array<{ key: JourneyKey; panel: StudioPanel; label: string; hint: string }> = [
-  { key: "purpose", panel: "basic", label: "用途与人物", hint: "送给谁、为什么送" },
-  { key: "theme", panel: "theme", label: "视觉主题", hint: "选择表达气质" },
-  { key: "cover", panel: "basic", label: "封面与解锁", hint: "第一眼和私密入口" },
-  { key: "memories", panel: "memories", label: "回忆故事", hint: "照片、日期与细节" },
-  { key: "letter", panel: "letter", label: "专属信件", hint: "真正想说的话" },
-  { key: "collaboration", panel: "collaboration", label: "多人共创", hint: "邀请朋友秘密投稿" },
-  { key: "media", panel: "media", label: "声音与视频", hint: "让表达更真实" },
-  { key: "surprise", panel: "experience", label: "未来与惊喜", hint: "问答、约定和彩蛋" },
-  { key: "timing", panel: "experience", label: "开放时间", hint: "倒计时和展示期限" },
-  { key: "publish", panel: "publish", label: "预览与发布", hint: "最后检查并送达" },
-];
-
 export default function GiftStudio({
   cloudMode = false,
   userEmail,
@@ -106,10 +77,12 @@ export default function GiftStudio({
   const [status, setStatus] = useState(
     cloudMode ? "云端已连接" : "本地演示模式",
   );
-  const initialJourney = journeySteps.some((step) => step.key === initialStep) ? (initialStep as JourneyKey) : "purpose";
-  const [activeJourneyStep, setActiveJourneyStep] = useState<JourneyKey>(initialJourney);
-  const activeJourneyIndex = journeySteps.findIndex((step) => step.key === activeJourneyStep);
-  const activePanel = journeySteps[activeJourneyIndex]?.panel ?? "basic";
+  const initialJourney = studioFeatures.some((step) => step.key === initialStep)
+    ? (initialStep as StudioFeatureKey)
+    : "purpose";
+  const [activeJourneyStep, setActiveJourneyStep] = useState<StudioFeatureKey>(initialJourney);
+  const activeFeature = studioFeatures.find((step) => step.key === activeJourneyStep) ?? studioFeatures[0];
+  const activePanel = activeFeature.panel;
   const [cloudCards, setCloudCards] = useState<CardSummary[]>([]);
   const [busy, setBusy] = useState(false);
   const [hasStoredAnswer, setHasStoredAnswer] = useState(initialHasStoredAnswer);
@@ -120,6 +93,9 @@ export default function GiftStudio({
   const [insights, setInsights] = useState<CardInsights | null>(null);
   const [mobilePreviewOpen, setMobilePreviewOpen] = useState(false);
   const [progressOpen, setProgressOpen] = useState(false);
+  const [allFeaturesOpen, setAllFeaturesOpen] = useState(false);
+  const [simulationMode, setSimulationMode] = useState(false);
+  const [collaborationSummary, setCollaborationSummary] = useState<CollaborationSpaceSummary | null>(null);
   const [briefDetailsOpen, setBriefDetailsOpen] = useState(briefJustImported);
   const [activeOrderId, setActiveOrderId] = useState<string | undefined>(
     orderId,
@@ -136,6 +112,20 @@ export default function GiftStudio({
     inviteLimit?: number;
     retentionTier?: string;
   } | null>(null);
+  const flowStateKey = useMemo(() => `${localDraftKey}-journey`, [localDraftKey]);
+  const [flowState, setFlowState] = useState({
+    simulationCompleted: false,
+    publishedTested: false,
+    deliveryCenterVisited: false,
+  });
+
+  const updateFlowState = (patch: Partial<typeof flowState>) => {
+    setFlowState((current) => {
+      const next = { ...current, ...patch };
+      window.localStorage.setItem(flowStateKey, JSON.stringify(next));
+      return next;
+    });
+  };
 
   const refreshCards = async () => {
     if (!cloudMode) return;
@@ -143,6 +133,20 @@ export default function GiftStudio({
     if (!response.ok) return;
     const body = await response.json();
     setCloudCards(body.cards ?? []);
+  };
+
+  const refreshCollaborationSummary = async () => {
+    if (!cloudMode || !activeOrderId || !(planInfo?.inviteLimit ?? 0)) {
+      setCollaborationSummary(null);
+      return;
+    }
+    const response = await fetch(
+      `/api/collaboration/spaces?orderId=${encodeURIComponent(activeOrderId)}`,
+      { cache: "no-store" },
+    );
+    if (!response.ok) return;
+    const body = await response.json();
+    setCollaborationSummary(body.space ?? null);
   };
 
   useEffect(() => {
@@ -173,6 +177,21 @@ export default function GiftStudio({
         setStatus(error instanceof Error ? error.message : "订单读取失败"),
       );
   }, [cloudMode, activeOrderId]);
+
+  useEffect(() => {
+    const savedFlow = window.localStorage.getItem(flowStateKey);
+    if (!savedFlow) return;
+    try {
+      setFlowState((current) => ({ ...current, ...JSON.parse(savedFlow) }));
+    } catch {
+      window.localStorage.removeItem(flowStateKey);
+    }
+  }, [flowStateKey]);
+
+  useEffect(() => {
+    void refreshCollaborationSummary();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cloudMode, activeOrderId, planInfo?.inviteLimit]);
 
   useEffect(() => {
     const saved = window.localStorage.getItem(localDraftKey);
@@ -220,7 +239,41 @@ export default function GiftStudio({
   const readiness = useMemo(() => calculateReadiness(card), [card]);
   const emotionalRichness = useMemo(() => calculateEmotionalRichness(card), [card]);
   const pacingSuggestions = useMemo(() => getPacingSuggestions(card), [card]);
-  const activeJourney = journeySteps[activeJourneyIndex] ?? journeySteps[0];
+  const dynamicJourney = useMemo(
+    () =>
+      buildDynamicJourney({
+        card,
+        readiness,
+        plan: planInfo
+          ? {
+              id: planInfo.id,
+              name: planInfo.name,
+              videoCount: planInfo.limits.videoCount,
+              inviteLimit: planInfo.inviteLimit ?? 0,
+            }
+          : null,
+        collaboration: collaborationSummary,
+        isPublished: Boolean(isCurrentPublished),
+        replyCount: currentCloudSummary?.replyCount ?? replies.length,
+        simulationCompleted: flowState.simulationCompleted,
+        publishedTested: flowState.publishedTested,
+        deliveryCenterVisited: flowState.deliveryCenterVisited,
+        hasStoredAnswer,
+        hasBrief: Boolean(briefContext),
+      }),
+    [
+      card,
+      readiness,
+      planInfo,
+      collaborationSummary,
+      isCurrentPublished,
+      currentCloudSummary?.replyCount,
+      replies.length,
+      flowState,
+      hasStoredAnswer,
+      briefContext,
+    ],
+  );
   const updateField = <K extends keyof CardData>(
     key: K,
     value: CardData[K],
@@ -279,6 +332,7 @@ export default function GiftStudio({
     if (publish) {
       setDeliveryJustPublished(true);
       setDeliveryOpen(true);
+      updateFlowState({ deliveryCenterVisited: true });
       setActiveJourneyStep("publish");
     }
     setHasStoredAnswer(hasStoredAnswer || Boolean(normalized.unlockAnswer));
@@ -349,6 +403,65 @@ export default function GiftStudio({
     setStatus("体验数据已更新");
   };
 
+  const openDeliveryCenter = () => {
+    setDeliveryJustPublished(false);
+    setDeliveryOpen(true);
+    updateFlowState({ deliveryCenterVisited: true });
+  };
+
+  const openRecipientSimulation = () => {
+    setSimulationMode(true);
+    setMobilePreviewOpen(true);
+    setStatus("正在以收件人视角模拟礼物；完整体验后点击“完成模拟”返回");
+  };
+
+  const closePreview = (completed = false) => {
+    if (simulationMode && completed) {
+      updateFlowState({ simulationCompleted: true });
+      setStatus("收件人视角模拟已完成，可以继续发布前检查");
+    }
+    setSimulationMode(false);
+    setMobilePreviewOpen(false);
+  };
+
+  const testPublishedGift = () => {
+    updateFlowState({ publishedTested: true });
+    window.open(publicPath, "_blank", "noopener,noreferrer");
+    setStatus("已打开正式礼物页面，请检查解锁、媒体和完整观看流程");
+  };
+
+  const runJourneyAction = (action: JourneyAction) => {
+    setProgressOpen(false);
+    setAllFeaturesOpen(false);
+    if (action.type === "feature") {
+      setActiveJourneyStep(action.feature);
+      return;
+    }
+    if (action.type === "simulation") {
+      openRecipientSimulation();
+      return;
+    }
+    if (action.type === "publish") {
+      setActiveJourneyStep("publish");
+      return;
+    }
+    if (action.type === "delivery") {
+      openDeliveryCenter();
+      return;
+    }
+    if (action.type === "test-published") {
+      testPublishedGift();
+      return;
+    }
+    if (action.type === "replies") {
+      void loadReplies();
+      return;
+    }
+    if (action.type === "insights") {
+      void loadInsights();
+    }
+  };
+
   const signOut = async () => {
     const { createClient } = await import("@/lib/supabase/client");
     await createClient().auth.signOut();
@@ -360,6 +473,8 @@ export default function GiftStudio({
     setCard(next);
     setHasStoredAnswer(initialHasStoredAnswer);
     window.localStorage.removeItem(localDraftKey);
+    window.localStorage.removeItem(flowStateKey);
+    setFlowState({ simulationCompleted: false, publishedTested: false, deliveryCenterVisited: false });
     setStatus(initialCard ? "已恢复订单与制作需求的初始内容" : "已恢复示例内容");
   };
 
@@ -496,16 +611,13 @@ export default function GiftStudio({
           <a className="button-secondary" href="/orders">
             我的订单
           </a>
-          <button type="button" className="button-secondary studio-mobile-preview-button" onClick={() => setMobilePreviewOpen(true)}>全屏预览</button>
+          <button type="button" className="button-secondary studio-mobile-preview-button" onClick={() => { setSimulationMode(false); setMobilePreviewOpen(true); }}>全屏预览</button>
           <button
             type="button"
             className="button-secondary"
             disabled={!isCurrentPublished && !deliveryJustPublished}
             title={!isCurrentPublished && !deliveryJustPublished ? "正式发布后即可获取专属链接和发送话术" : "打开交付中心"}
-            onClick={() => {
-              setDeliveryJustPublished(false);
-              setDeliveryOpen(true);
-            }}
+            onClick={openDeliveryCenter}
           >
             专属链接 / 交付
           </button>
@@ -596,6 +708,80 @@ export default function GiftStudio({
         />
       ) : null}
 
+      {progressOpen ? (
+        <div className="studio-sheet-backdrop" role="presentation" onMouseDown={() => setProgressOpen(false)}>
+          <section className="studio-sheet journey-sheet" role="dialog" aria-modal="true" aria-label="完整制作旅程" onMouseDown={(event) => event.stopPropagation()}>
+            <header>
+              <div>
+                <small>{dynamicJourney.phaseLabel}</small>
+                <h2>{isCurrentPublished ? "交付与回应的完整路径" : "这份礼物接下来会经历什么"}</h2>
+                <p>旅程会根据套餐、已购买权益和当前状态自动调整；等待中的任务不会阻止你继续完成其他内容。</p>
+              </div>
+              <button type="button" onClick={() => setProgressOpen(false)}>关闭</button>
+            </header>
+            <div className="journey-sheet-list">
+              {dynamicJourney.tasks.map((item, index) => (
+                <button
+                  type="button"
+                  key={item.key}
+                  className={`journey-sheet-item state-${item.state} ${item.key === dynamicJourney.primary.key ? "is-primary" : ""}`}
+                  onClick={() => runJourneyAction(item.action)}
+                >
+                  <span className="journey-sheet-index">
+                    {item.state === "done" ? "✓" : String(index + 1).padStart(2, "0")}
+                  </span>
+                  <div>
+                    <small>{item.required ? "关键任务" : item.state === "waiting" ? "等待中" : "可选增强"}</small>
+                    <strong>{item.label}</strong>
+                    <p>{item.hint}</p>
+                  </div>
+                  <em>{item.estimate}</em>
+                </button>
+              ))}
+            </div>
+          </section>
+        </div>
+      ) : null}
+
+      {allFeaturesOpen ? (
+        <div className="studio-sheet-backdrop" role="presentation" onMouseDown={() => setAllFeaturesOpen(false)}>
+          <section className="studio-sheet features-sheet" role="dialog" aria-modal="true" aria-label="全部制作功能" onMouseDown={(event) => event.stopPropagation()}>
+            <header>
+              <div>
+                <small>全部功能</small>
+                <h2>随时进入任意制作模块</h2>
+                <p>动态旅程只负责推荐，不会隐藏你已经拥有的功能。</p>
+              </div>
+              <button type="button" onClick={() => setAllFeaturesOpen(false)}>关闭</button>
+            </header>
+            <div className="studio-feature-grid">
+              {studioFeatures.map((feature) => {
+                const needsCollaborationUpgrade = feature.key === "collaboration" && cloudMode && !(planInfo?.inviteLimit ?? 0);
+                const videoRestricted = feature.key === "media" && planInfo?.limits.videoCount === 0;
+                const themeRestricted = feature.key === "theme" && planInfo?.id === "light";
+                return (
+                  <button
+                    type="button"
+                    key={feature.key}
+                    className={activeJourneyStep === feature.key ? "active" : ""}
+                    onClick={() => { setActiveJourneyStep(feature.key); setAllFeaturesOpen(false); }}
+                  >
+                    <span>{feature.label.slice(0, 1)}</span>
+                    <div>
+                      <strong>{feature.label}</strong>
+                      <p>{feature.hint}</p>
+                      {needsCollaborationUpgrade ? <small>当前未购买共创人数，可进入查看升级方式</small> : null}
+                      {videoRestricted ? <small>背景音乐可用，视频需要升级套餐</small> : null}
+                      {themeRestricted ? <small>轻定制固定使用温暖胶片主题</small> : null}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+        </div>
+      ) : null}
+
       {cloudMode && insightsOpen ? (
         <section className="reply-viewer insights-viewer">
           <header>
@@ -677,14 +863,11 @@ export default function GiftStudio({
             <p>礼物链接发给收件人；秘密共创链接发给朋友或家人。交付中心已经准备好链接、二维码和可直接复制的话术。</p>
           </div>
           <div className="published-share-actions">
-            <a className="button-secondary" href={publicPath} target="_blank" rel="noreferrer">先测试礼物 ↗</a>
+            <button type="button" className="button-secondary" onClick={testPublishedGift}>先测试礼物 ↗</button>
             <button
               type="button"
               className="button-primary"
-              onClick={() => {
-                setDeliveryJustPublished(false);
-                setDeliveryOpen(true);
-              }}
+              onClick={openDeliveryCenter}
             >
               打开交付中心
             </button>
@@ -693,25 +876,62 @@ export default function GiftStudio({
       ) : null}
 
       <div className={`studio-layout ${cloudMode ? "has-cloud-strip" : ""}`}>
-        <aside className="studio-journey" aria-label="礼物制作步骤">
-          <div className="studio-journey-heading"><span>礼物旅程</span><strong>{activeJourneyIndex + 1}/{journeySteps.length}</strong></div>
-          <nav>
-            {journeySteps.map((step, index) => {
-              const done = index < activeJourneyIndex || (step.key === "publish" && readiness.score >= 85);
-              return (
+        <aside className="studio-journey dynamic-journey" aria-label="动态制作旅程">
+          <div className="dynamic-journey-heading">
+            <div>
+              <small>{dynamicJourney.phaseLabel}</small>
+              <strong>{isCurrentPublished ? "礼物已经进入交付阶段" : "系统会根据当前状态推荐下一步"}</strong>
+            </div>
+            <span>{readiness.score}%</span>
+          </div>
+
+          <article className={`journey-primary-card state-${dynamicJourney.primary.state}`}>
+            <div className="journey-task-label">
+              <span>{dynamicJourney.primary.state === "waiting" ? "等待中" : "主推荐"}</span>
+              <small>{dynamicJourney.primary.estimate}</small>
+            </div>
+            <h2>{dynamicJourney.primary.label}</h2>
+            <p>{dynamicJourney.primary.reason}</p>
+            <div className="journey-task-outcome">
+              <small>完成后</small>
+              <strong>{dynamicJourney.primary.outcome}</strong>
+            </div>
+            <button
+              type="button"
+              className="button-primary"
+              onClick={() => runJourneyAction(dynamicJourney.primary.action)}
+            >
+              {dynamicJourney.primary.cta}
+            </button>
+          </article>
+
+          {dynamicJourney.alternatives.length ? (
+            <div className="journey-alternatives">
+              <header>
+                <strong>也可以同时完成</strong>
+                <small>不会因为等待而停住</small>
+              </header>
+              {dynamicJourney.alternatives.map((item) => (
                 <button
                   type="button"
-                  key={step.key}
-                  className={activeJourneyStep === step.key ? "active" : done ? "done" : ""}
-                  onClick={() => setActiveJourneyStep(step.key)}
+                  key={item.key}
+                  className={`journey-alternative state-${item.state}`}
+                  onClick={() => runJourneyAction(item.action)}
                 >
-                  <span>{done ? "✓" : String(index + 1).padStart(2, "0")}</span>
-                  <div><strong>{step.label}</strong><small>{step.hint}</small></div>
+                  <span>{item.state === "waiting" ? "…" : item.state === "optional" ? "+" : "→"}</span>
+                  <div>
+                    <strong>{item.label}</strong>
+                    <small>{item.estimate} · {item.hint}</small>
+                  </div>
                 </button>
-              );
-            })}
-          </nav>
-          <div className="studio-journey-help"><strong>不知道该写什么？</strong><p>先写真实事实，再使用 AI 帮你整理，不要让文案替代真实经历。</p></div>
+              ))}
+            </div>
+          ) : null}
+
+          <div className="dynamic-journey-footer">
+            <button type="button" onClick={() => setProgressOpen(true)}>查看完整旅程</button>
+            <button type="button" onClick={() => setAllFeaturesOpen(true)}>查看全部功能</button>
+          </div>
         </aside>
         <aside className="editor-panel">
           <div className="studio-compact-progress">
@@ -719,7 +939,7 @@ export default function GiftStudio({
               type="button"
               className="studio-progress-main"
               aria-expanded={progressOpen}
-              onClick={() => setProgressOpen((current) => !current)}
+              onClick={() => setProgressOpen(true)}
             >
               <span className="studio-progress-ring" aria-hidden="true">
                 <svg viewBox="0 0 36 36">
@@ -729,28 +949,16 @@ export default function GiftStudio({
                 <strong>{readiness.score}</strong>
               </span>
               <span className="studio-progress-copy">
-                <small>第 {activeJourneyIndex + 1}/{journeySteps.length} 步</small>
-                <strong>{activeJourney.label}</strong>
-                <em>{activeJourney.hint}</em>
+                <small>{dynamicJourney.phaseLabel}</small>
+                <strong>{dynamicJourney.primary.label}</strong>
+                <em>{dynamicJourney.primary.hint}</em>
               </span>
             </button>
             <div className="studio-progress-actions">
               <span>情感丰富度 {emotionalRichness}%</span>
-              <button type="button" onClick={() => setProgressOpen((current) => !current)}>
-                {progressOpen ? "收起" : "查看进度"}
-              </button>
+              <button type="button" onClick={() => setProgressOpen(true)}>完整旅程</button>
+              <button type="button" onClick={() => setAllFeaturesOpen(true)}>全部功能</button>
             </div>
-            {progressOpen ? (
-              <div className="studio-progress-popover">
-                <header><div><small>下一项关键任务</small><strong>{readiness.nextAction}</strong></div><button type="button" onClick={() => setProgressOpen(false)}>×</button></header>
-                <p>{readiness.reason}</p>
-                <div className="studio-progress-detail">
-                  <label><span>制作完成度</span><strong>{readiness.score}%</strong><i><b style={{ width: `${readiness.score}%` }} /></i></label>
-                  <label><span>情感丰富度</span><strong>{emotionalRichness}%</strong><i><b style={{ width: `${emotionalRichness}%` }} /></i></label>
-                </div>
-                <button type="button" className="button-secondary" onClick={() => { setActiveJourneyStep("publish"); setProgressOpen(false); }}>查看发布检查</button>
-              </div>
-            ) : null}
           </div>
 
           {briefContext ? (
@@ -1079,7 +1287,12 @@ export default function GiftStudio({
             ) : null}
 
             {activePanel === "collaboration" ? (
-              <CollaborationManager cloudMode={cloudMode} orderId={activeOrderId} onStatus={setStatus} />
+              <CollaborationManager
+                cloudMode={cloudMode}
+                orderId={activeOrderId}
+                onStatus={setStatus}
+                onSummaryChange={setCollaborationSummary}
+              />
             ) : null}
 
             {activePanel === "letter" ? (
@@ -1353,8 +1566,8 @@ export default function GiftStudio({
             ) : null}
 
             <div className="studio-step-actions">
-              <button type="button" className="button-secondary" disabled={activeJourneyIndex === 0} onClick={() => setActiveJourneyStep(journeySteps[Math.max(0, activeJourneyIndex - 1)].key)}>返回上一步</button>
-              <button type="button" className="button-primary" disabled={activeJourneyIndex === journeySteps.length - 1} onClick={() => setActiveJourneyStep(journeySteps[Math.min(journeySteps.length - 1, activeJourneyIndex + 1)].key)}>保存当前内容并继续</button>
+              <button type="button" className="button-secondary" onClick={() => setAllFeaturesOpen(true)}>查看全部功能</button>
+              <button type="button" className="button-primary" onClick={() => runJourneyAction(dynamicJourney.primary.action)}>{dynamicJourney.primary.cta}</button>
             </div>
 
             <div className="editor-danger-zone">
@@ -1372,15 +1585,23 @@ export default function GiftStudio({
 
         <section className={`preview-panel ${mobilePreviewOpen ? "mobile-open" : ""}`}>
           <div className="preview-toolbar">
-            <button type="button" className="preview-mobile-close" onClick={() => setMobilePreviewOpen(false)}>返回编辑</button>
+            <button
+              type="button"
+              className="preview-mobile-close"
+              onClick={() => closePreview(simulationMode)}
+            >
+              {simulationMode ? "完成模拟并返回" : "返回编辑"}
+            </button>
             <div>
               <span className="preview-dot" />
-              <strong>实时预览</strong>
-              <small>390 × 844 手机视口</small>
+              <strong>{simulationMode ? "收件人视角模拟" : "实时预览"}</strong>
+              <small>{simulationMode ? "请按真实顺序完整体验一次" : "390 × 844 手机视口"}</small>
             </div>
-            <a href={publicPath} target="_blank" rel="noreferrer">
-              打开专属页面 ↗
-            </a>
+            {isCurrentPublished ? (
+              <button type="button" onClick={testPublishedGift}>打开正式页面 ↗</button>
+            ) : (
+              <button type="button" onClick={() => closePreview(simulationMode)}>返回制作台</button>
+            )}
           </div>
           <div className="phone-shell">
             <div className="phone-speaker" />
