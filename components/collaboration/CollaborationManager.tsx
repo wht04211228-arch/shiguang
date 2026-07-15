@@ -35,6 +35,7 @@ type Props = {
   orderId?: string;
   cloudMode: boolean;
   onStatus?: (status: string) => void;
+  onSummaryChange?: (space: CollaborationSpaceSummary | null) => void;
 };
 
 async function readJson(response: Response) {
@@ -64,6 +65,7 @@ export default function CollaborationManager({
   orderId,
   cloudMode,
   onStatus,
+  onSummaryChange,
 }: Props) {
   const [space, setSpace] = useState<CollaborationSpaceSummary | null>(null);
   const [contributions, setContributions] = useState<CollaborationContribution[]>([]);
@@ -98,7 +100,9 @@ export default function CollaborationManager({
     const inviteBody = await readJson(inviteResponse);
     const requestBody = await readJson(requestResponse);
     if (!spaceResponse.ok) throw new Error(spaceBody.error || "读取共创空间失败");
-    setSpace((spaceBody.space as CollaborationSpaceSummary | null) ?? null);
+    const nextSpace = (spaceBody.space as CollaborationSpaceSummary | null) ?? null;
+    setSpace(nextSpace);
+    onSummaryChange?.(nextSpace);
     setContributions((spaceBody.contributions as CollaborationContribution[]) ?? []);
     setInvites((inviteBody.invites as InviteRow[]) ?? []);
     setManagementRequests((requestBody.requests as ManagementRequestRow[]) ?? []);
