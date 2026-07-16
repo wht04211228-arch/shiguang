@@ -1307,13 +1307,14 @@ export default function GiftStudio({
                 <AICopyAssistant
                   card={card}
                   orderId={activeOrderId}
-                  onGenerated={() =>
+                  onGenerated={({ quotaUsed }) => {
+                    if (!quotaUsed) return;
                     setPlanInfo((current) =>
                       current
                         ? { ...current, aiDraftsUsed: current.aiDraftsUsed + 1 }
                         : current,
-                    )
-                  }
+                    );
+                  }}
                   onApply={(patch) => {
                     setCard((current) => ({ ...current, ...patch }));
                     setStatus("AI 草稿已应用，建议继续加入真实细节。");

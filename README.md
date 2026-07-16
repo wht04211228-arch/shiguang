@@ -180,3 +180,7 @@ npm audit --omit=dev
 ```
 
 正式上线前按 [DEPLOYMENT_CHECKLIST.md](./DEPLOYMENT_CHECKLIST.md) 完成双账号、跨设备、权限和付款验收。
+
+## v0.9.5 DeepSeek 智能文案
+
+制作台现已支持 DeepSeek 智能文案工作台：从真实经历生成完整初稿、润色现有内容、重构故事表达，并在应用前预览结果。配置方法见 `DEEPSEEK_SETUP.md`。
