@@ -25,7 +25,7 @@ export default function LoginPage() {
             当前仍可使用浏览器本地制作模式。完成 README 中的 Supabase
             配置后，这里会自动启用账号登录。
           </p>
-          <Link className="button-primary auth-submit" href="/studio">
+          <Link className="button-primary auth-submit" href="/studio/theme/galaxy">
             进入本地制作台
           </Link>
         </section>

@@ -100,7 +100,7 @@ export default async function PricingPage({
       <section className="pricing-bottom-cta">
         <h2>还不确定选择哪一档？</h2>
         <p>先体验样片，感受收件人真正看到的完整流程。</p>
-        <Link className="landing-secondary" href="/card/sample">体验完整样片</Link>
+        <Link className="landing-secondary" href="/demo/galaxy">体验完整样片</Link>
       </section>
     </main>
   );

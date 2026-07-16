@@ -1,14 +1,15 @@
 {
   "name": "shiguang-digital-memory-gift",
-  "version": "1.0.0-beta.1",
+  "version": "1.0.2-beta.3",
   "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
-    "check": "npm run typecheck && npm run build",
-    "secret": "node scripts/generate-secret.mjs"
+    "check": "npm run audit:ui && npm run typecheck && npm run build",
+    "secret": "node scripts/generate-secret.mjs",
+    "audit:ui": "node scripts/audit-interactions.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.1",
@@ -28,7 +29,7 @@
     "@types/react-dom": "^19.1.0",
     "typescript": "^5.9.0"
   },
-  "description": "拾光视觉叙事与 DeepSeek AI 故事体验版：官方主 Demo、主题推荐、一次免费预览与三套主题制作台",
+  "description": "拾光全局交互与UI升级版：修复无响应按钮、首页分步引导、三主题制作台完整可操作流程与全站视觉统一",
   "overrides": {
     "postcss": "$postcss"
   }

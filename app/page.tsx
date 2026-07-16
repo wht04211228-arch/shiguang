@@ -3,6 +3,7 @@ import AnalyticsEvent from "@/components/AnalyticsEvent";
 import BrandLogo from "@/components/brand/BrandLogo";
 import SiteHeader from "@/components/brand/SiteHeader";
 import HomeExperience from "@/components/home/HomeExperience";
+import HomeGuidedJourney from "@/components/home/HomeGuidedJourney";
 
 const plans = [
   { name: "轻定制", price: "5.20", text: "照片与文字为主，适合完成一份简洁但完整的礼物。" },
@@ -16,6 +17,7 @@ export default function HomePage() {
       <AnalyticsEvent name="home_viewed" metadata={{ version: "1.0-visual" }} />
       <SiteHeader />
       <HomeExperience />
+      <HomeGuidedJourney />
 
       <section className="v10-section v10-demo-section" id="cases">
         <div className="v10-section-heading">
@@ -98,7 +100,7 @@ export default function HomePage() {
       </section>
 
       <section className="v10-final-cta">
-        <BrandLogo dark href="" />
+        <BrandLogo dark href="/" />
         <p>有些礼物会被打开一次，有些礼物会被记住很多年。</p>
         <h2>把你们的故事，留在拾光。</h2>
         <div><Link className="v10-primary" href="/demo/galaxy">体验样片</Link><Link className="v10-secondary" href="/create">开始制作</Link></div>

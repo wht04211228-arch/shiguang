@@ -147,8 +147,8 @@ export default function ThemeRecommendationWizard() {
   ];
 
   return (
-    <main className="ai-theme-page">
-      <SiteHeader active="create" compact />
+    <main className={`ai-theme-page ${previewTheme}`}>
+      <SiteHeader active="create" compact theme={previewTheme} />
       <section className="ai-theme-shell">
         <div className="ai-theme-form">
           <div className="ai-theme-progress"><span>故事助手</span><b>{Math.min(step + 1, 4)} / 4</b><i style={{ width: `${((Math.min(step, 3) + 1) / 4) * 100}%` }} /></div>

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import SiteHeader from "@/components/brand/SiteHeader";
 import { formatCny, getPlan } from "@/lib/commerce/plans";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseAdminConfigured } from "@/lib/supabase/config";
@@ -48,21 +49,7 @@ export default async function OrdersPage() {
 
   return (
     <main className="commerce-page orders-page">
-      <header className="landing-nav commerce-nav">
-        <Link className="landing-brand" href="/">
-          <span>拾</span>
-          <div>
-            <strong>拾光</strong>
-            <small>ORDER CENTER</small>
-          </div>
-        </Link>
-        <nav>
-          <Link href="/pricing">购买套餐</Link>
-          <Link className="nav-solid" href="/studio">
-            制作台
-          </Link>
-        </nav>
-      </header>
+      <SiteHeader active="orders" />
       <section className="commerce-hero compact">
         <p className="landing-kicker">ORDER CENTER</p>
         <h1>我的订单</h1>

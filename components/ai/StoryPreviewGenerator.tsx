@@ -68,7 +68,7 @@ export default function StoryPreviewGenerator({ theme, plan }: { theme: ThemeKey
 
   return (
     <main className={`story-preview-page ${theme}`}>
-      <SiteHeader compact />
+      <SiteHeader compact theme={theme} />
       <section className="story-preview-shell">
         <div className="story-preview-copy">
           <p>ONE REAL AI PREVIEW</p>

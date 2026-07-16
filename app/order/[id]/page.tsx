@@ -53,7 +53,7 @@ export default async function OrderPage({
           <p>{plan.name} · {formatCny(plan.priceCents)}。当前没有连接真实数据库，演示模式不会产生付款或审核记录。</p>
           <div className="order-actions">
             <Link className="button-primary" href="/brief?order=demo">体验制作需求</Link>
-            <Link className="button-secondary" href="/studio">直接体验制作台</Link>
+            <Link className="button-secondary" href="/studio/theme/galaxy">直接体验制作台</Link>
           </div>
           <DraftReviewForm orderId="demo" previewUrl="/card/sample" roundNo={1} revisionCount={0} revisionLimit={plan.limits.revisions} />
           <FeedbackForm orderId="demo" />

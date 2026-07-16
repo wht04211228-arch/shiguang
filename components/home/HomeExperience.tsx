@@ -84,7 +84,7 @@ export default function HomeExperience() {
       {soundPrompt ? (
         <div className="v10-modal-backdrop" role="dialog" aria-modal="true" aria-label="选择样片声音">
           <div className="v10-sound-dialog">
-            <BrandLogo compact href="" />
+            <BrandLogo compact href="/" />
             <p className="v10-kicker">完整体验包含声音</p>
             <h2>是否开启星空氛围音？</h2>
             <p>你可以在样片中随时暂停、关闭声音或切换为自由浏览。</p>

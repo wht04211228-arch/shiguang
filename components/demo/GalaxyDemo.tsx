@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import BrandLogo from "@/components/brand/BrandLogo";
 import { useEffect, useMemo, useState } from "react";
 import { galaxyDemo } from "@/lib/experience/galaxy-demo";
 
@@ -100,12 +101,20 @@ export default function GalaxyDemo({ initialSound = false }: { initialSound?: bo
     <main className="galaxy-demo-page">
       <div className="galaxy-demo-stars" aria-hidden="true"><i /><i /><i /><i /><i /><i /><i /></div>
       <header className="galaxy-demo-header">
-        <Link href="/">拾光 SHIGUANG</Link>
-        <div className="galaxy-demo-mode">
-          <button className={mode === "immersive" ? "active" : ""} type="button" onClick={() => setMode("immersive")}>沉浸播放</button>
-          <button className={mode === "browse" ? "active" : ""} type="button" onClick={() => { setMode("browse"); setPlaying(false); }}>自由浏览</button>
+        <div className="galaxy-demo-header-inner">
+          <div className="galaxy-demo-brand">
+            <BrandLogo compact dark href="/" />
+            <span><b>B</b> 梦幻星空样片</span>
+          </div>
+          <div className="galaxy-demo-mode">
+            <button className={mode === "immersive" ? "active" : ""} type="button" onClick={() => setMode("immersive")}>沉浸播放</button>
+            <button className={mode === "browse" ? "active" : ""} type="button" onClick={() => { setMode("browse"); setPlaying(false); }}>自由浏览</button>
+          </div>
+          <div className="galaxy-demo-header-actions">
+            <Link href="/#cases">退出样片</Link>
+            <button type="button" onClick={() => setSound((value) => !value)}>{sound ? "声音已开启" : "静音"}</button>
+          </div>
         </div>
-        <button type="button" onClick={() => setSound((value) => !value)}>{sound ? "声音已开启" : "静音"}</button>
       </header>
 
       <section className={`galaxy-stage scene-${scene.id}`}>

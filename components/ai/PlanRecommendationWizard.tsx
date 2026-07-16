@@ -50,7 +50,7 @@ export default function PlanRecommendationWizard({ theme }: { theme: ThemeKey })
 
   return (
     <main className={`plan-recommend-page ${theme}`}>
-      <SiteHeader active="pricing" compact />
+      <SiteHeader active="pricing" compact theme={theme} />
       <section className="plan-recommend-shell">
         <div className="plan-recommend-heading">
           <p>THEME CONFIRMED</p>

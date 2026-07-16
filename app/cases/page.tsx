@@ -1,5 +1,6 @@
 import Link from "next/link";
 import AnalyticsEvent from "@/components/AnalyticsEvent";
+import SiteHeader from "@/components/brand/SiteHeader";
 import { caseStudies } from "@/lib/cases";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isSupabaseAdminConfigured } from "@/lib/supabase/config";
@@ -46,10 +47,7 @@ export default async function CasesPage() {
   return (
     <main className="commerce-page cases-page">
       <AnalyticsEvent name="cases_viewed" />
-      <header className="landing-nav commerce-nav">
-        <Link className="landing-brand" href="/"><span>拾</span><div><strong>拾光</strong><small>CASE STORIES</small></div></Link>
-        <nav><Link href="/card/sample">体验样片</Link><Link href="/pricing">套餐价格</Link><Link className="nav-solid" href="/pricing">开始定制</Link></nav>
-      </header>
+      <SiteHeader active="cases" />
       <section className="commerce-hero cases-hero">
         <p className="landing-kicker">STORIES & VERIFIED FEEDBACK</p>
         <h1>真正让人愿意付钱的，不是特效，而是“这就是我们的故事”。</h1>
@@ -89,7 +87,7 @@ export default async function CasesPage() {
       <section className="landing-cta cases-cta">
         <p>YOUR STORY, NOT A TEMPLATE</p>
         <h2>先体验完整样片，再决定你想把哪段关系认真保存下来。</h2>
-        <div><Link className="landing-primary" href="/card/sample">体验完整样片</Link><Link className="landing-secondary" href="/pricing">查看套餐</Link></div>
+        <div><Link className="landing-primary" href="/demo/galaxy">体验完整样片</Link><Link className="landing-secondary" href="/pricing">查看套餐</Link></div>
       </section>
     </main>
   );

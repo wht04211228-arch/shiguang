@@ -18,8 +18,8 @@ function demoDashboard() {
         <Link className="landing-primary" href="/pricing">创建第一份礼物</Link>
       </section>
       <section className="dashboard-grid">
-        <article className="dashboard-next-card"><span>演示下一步</span><h2>体验一份完整样片</h2><p>先站在收件人的角度打开礼物，再决定自己需要准备哪些素材。</p><Link href="/card/sample">立即体验样片 →</Link></article>
-        <article className="dashboard-metric-card"><BrandLogo compact href="" /><strong>0%</strong><span>礼物准备度</span></article>
+        <article className="dashboard-next-card"><span>演示下一步</span><h2>体验一份完整样片</h2><p>先站在收件人的角度打开礼物，再决定自己需要准备哪些素材。</p><Link href="/demo/galaxy">立即体验样片 →</Link></article>
+        <article className="dashboard-metric-card"><BrandLogo compact href="/" /><strong>0%</strong><span>礼物准备度</span></article>
       </section>
     </main>
   );
@@ -119,7 +119,7 @@ export default async function DashboardPage() {
           <Link className="landing-primary" href={nextHref}>现在完成这一步</Link>
         </article>
         <article className="dashboard-gift-card">
-          <header><div><span>当前礼物</span><h2>{card?.recipient_name ? `送给 ${card.recipient_name}` : plan.name}</h2></div><BrandLogo compact href="" /></header>
+          <header><div><span>当前礼物</span><h2>{card?.recipient_name ? `送给 ${card.recipient_name}` : plan.name}</h2></div><BrandLogo compact href="/" /></header>
           <dl>
             <div><dt>订单金额</dt><dd>{formatCny(active.amount)}</dd></div>
             <div><dt>共创权益</dt><dd>{invite.label}</dd></div>
