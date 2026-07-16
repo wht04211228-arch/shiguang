@@ -1,6 +1,6 @@
 {
   "name": "shiguang-digital-memory-gift",
-  "version": "0.9.4",
+  "version": "1.0.0-beta.1",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -28,7 +28,7 @@
     "@types/react-dom": "^19.1.0",
     "typescript": "^5.9.0"
   },
-  "description": "拾光多人秘密共创纪念空间：制作需求自动导入制作台、轻量进度导航、发布后交付引导与清晰下一步提醒",
+  "description": "拾光视觉叙事与 DeepSeek AI 故事体验版：官方主 Demo、主题推荐、一次免费预览与三套主题制作台",
   "overrides": {
     "postcss": "$postcss"
   }
